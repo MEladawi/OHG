@@ -1,0 +1,31 @@
+Package: ohg
+Title: Ordered Hypergeometric (Minimum-Hypergeometric) Enrichment
+Version: 0.0.0.9000
+Authors@R:
+    person("Mahmoud", "Eladawi", email = "eladawimahmoud@tutamail.com", role = c("aut", "cre"))
+Description: Ordered / minimum-hypergeometric (mHG) enrichment test for one ranked
+    gene list against a collection of gene sets. Reports significance (a
+    permutation-calibrated p-value), localization (cutoff rank and leading-edge
+    fraction), and magnitude (a normalized leading-edge score) as three separate,
+    never-pre-mixed axes.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Depends:
+    R (>= 4.2)
+Imports:
+    dplyr,
+    methods,
+    purrr,
+    stats,
+    stringr,
+    tibble
+Suggests:
+    ashr,
+    furrr,
+    future,
+    ggplot2,
+    GSEABase,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
