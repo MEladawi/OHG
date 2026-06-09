@@ -1,7 +1,9 @@
 # OHG
 
 **Ordered Hypergeometric (minimum-hypergeometric, mHG) enrichment** for one
-ranked gene list against a collection of gene sets (pathways).
+ranked gene list — e.g., genes ordered by a differential expression analysis
+(by signed significance, fold change, or a test statistic) — against a collection
+of gene sets (pathways).
 
 OHG learns the optimal cutoff from the ranking itself and reports three
 **orthogonal, never-pre-mixed** axes:
