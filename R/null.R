@@ -4,7 +4,7 @@
 #' `seq_len(N)` (a random placement of `m` hits among `N` positions) and evaluates
 #' the identical tie-aware mHG statistic on each. Because every draw is a size-`m`
 #' subset of the universe, each permutation has exactly `m` hits and a leading edge
-#' of size at least 1 — zero-overlap permutations cannot occur. Position draws and
+#' of size at least 1 -- zero-overlap permutations cannot occur. Position draws and
 #' `log_stat_b` depend only on `(N, m, boundaries)` and so are portable across
 #' datasets; the per-permutation leading-edge indices are returned for the
 #' call-specific effect-size null.

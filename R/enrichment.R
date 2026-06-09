@@ -4,14 +4,14 @@
 #' list against a collection of gene sets. The reported `p_value` is a
 #' permutation-calibrated p-value (significance); localization is reported by
 #' `cutoff_rank` and `leading_edge_fraction`; magnitude by `NLES`. These three
-#' axes are kept separate and never pre-mixed — the package emits no composite
+#' axes are kept separate and never pre-mixed -- the package emits no composite
 #' ranking column.
 #'
 #' @param ranked_genes Unique character vector, most important first. The universe
 #'   is the ranked list; there is no separate universe-size argument.
 #' @param gene_sets A named list of character vectors, a `.gmt` file path, or a
 #'   `GSEABase::GeneSetCollection`.
-#' @param rank_stat Numeric ordering statistic (ordering only — never multiplied
+#' @param rank_stat Numeric ordering statistic (ordering only -- never multiplied
 #'   into the test); `NULL` assumes a fully-resolved order.
 #' @param weight Numeric effect magnitude (`abs()` is used; sign ignored); `NULL`
 #'   yields `NLES = NA` with overlap-based outputs still reported.

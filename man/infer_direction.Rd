@@ -15,8 +15,8 @@ infer_direction(rank_stat, supplied = NULL)
 One of \code{"up"}, \code{"down"}, \code{"both"}.
 }
 \description{
-A signed \code{rank_stat} (one that crosses zero) defaults to \code{"both"} — both ends
-are meaningful. A non-negative or absent \code{rank_stat} defaults to \code{"up"} — only
+A signed \code{rank_stat} (one that crosses zero) defaults to \code{"both"} -- both ends
+are meaningful. A non-negative or absent \code{rank_stat} defaults to \code{"up"} -- only
 the top is meaningful. A user-supplied \code{direction} always wins.
 }
 \examples{

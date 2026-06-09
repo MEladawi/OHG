@@ -14,6 +14,16 @@ test_that("non-increasing rank_stat is asserted", {
   )
 })
 
+test_that("tie fraction is reported when rank_stat has ties", {
+  expect_message(
+    validate_inputs(paste0("g", 1:4), rank_stat = c(5, 5, 3, 1), weight = NULL),
+    "ties"
+  )
+  expect_silent(
+    validate_inputs(paste0("g", 1:4), rank_stat = c(5, 4, 3, 1), weight = NULL)
+  )
+})
+
 test_that("weight guard: hard error on non-finite, soft warn on extreme range", {
   expect_error(validate_inputs(c("a", "b"), NULL, weight = c(1, Inf)), "finite")
   expect_error(validate_inputs(c("a", "b"), NULL, weight = c(1, NA)), "finite")

@@ -44,3 +44,13 @@ test_that("coerce_gene_sets errors on unnamed list and bad type", {
   expect_error(coerce_gene_sets(list(c("g1"), c("g2"))), "named")
   expect_error(coerce_gene_sets(42), "named list|GeneSetCollection|.gmt")
 })
+
+test_that("coerce_gene_sets disambiguates duplicate set names with a warning", {
+  expect_warning(
+    out <- coerce_gene_sets(list(X = c("g1", "g2"), X = c("g3", "g4"))),
+    "[Dd]uplicate"
+  )
+  expect_length(out, 2L)
+  expect_setequal(names(out), c("X", "X.1"))
+  expect_identical(out[["X"]], c("g1", "g2"))
+})

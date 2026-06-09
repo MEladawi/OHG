@@ -29,8 +29,8 @@ tie_boundaries <- function(rank_stat, n = length(rank_stat)) {
 
 #' Infer the default test direction from `rank_stat`
 #'
-#' A signed `rank_stat` (one that crosses zero) defaults to `"both"` — both ends
-#' are meaningful. A non-negative or absent `rank_stat` defaults to `"up"` — only
+#' A signed `rank_stat` (one that crosses zero) defaults to `"both"` -- both ends
+#' are meaningful. A non-negative or absent `rank_stat` defaults to `"up"` -- only
 #' the top is meaningful. A user-supplied `direction` always wins.
 #'
 #' @param rank_stat Numeric ordering statistic, or `NULL`.

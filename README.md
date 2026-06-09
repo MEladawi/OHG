@@ -1,9 +1,9 @@
-# ohg
+# OHG
 
 **Ordered Hypergeometric (minimum-hypergeometric, mHG) enrichment** for one
-ranked gene list against a collection of gene sets.
+ranked gene list against a collection of gene sets (pathways).
 
-`ohg` learns the optimal cutoff from the ranking itself and reports three
+OHG learns the optimal cutoff from the ranking itself and reports three
 **orthogonal, never-pre-mixed** axes:
 
 | Axis | Question | Columns |
@@ -31,9 +31,9 @@ Optional (Suggests): `furrr`/`future` (parallel), `ggplot2` (plot), `GSEABase`
 ## Quick start
 
 ```r
-library(ohg)
+library(OHG)
 
-# A ranked list (most important first) and a few gene sets.
+# A ranked list (most important first) and a few gene sets (pathways).
 ranked <- paste0("g", 1:500)
 sets <- list(
   PATHWAY_A = ranked[c(1:18, 40, 75)],   # strong top enrichment
@@ -68,7 +68,7 @@ These are **different** and easy to conflate:
   `|LFC|`, `|LFC|·-log10(p)`, or `-log10(p)`.
 
 > **Build any `-log10(p)` term in log space** from the finite log-p your pipeline
-> already carries — never as `-log10(0) = Inf`. `ohg` hard-errors on non-finite
+> already carries — never as `-log10(0) = Inf`. OHG hard-errors on non-finite
 > `weight`.
 
 ```r
@@ -126,7 +126,7 @@ whole-pathway when it is 4 of 80 genes.
 ## Ties
 
 When `rank_stat` has ties, cutting *inside* a tie block would make the statistic
-depend on arbitrary within-block order. `ohg` restricts cutoffs to **tie-block
+depend on arbitrary within-block order. OHG restricts cutoffs to **tie-block
 boundaries** (a block is included whole or not at all), so the result is
 invariant to within-block permutation. **Tip:** rank by a finer statistic to
 shrink large tie blocks.
@@ -149,13 +149,13 @@ tool:
 shrunk <- ohg_shrink_lfc(lfc, se)     # needs 'ashr' (Suggests)
 ```
 
-Shrinkage is a function of `(LFC, SE)`, not `(LFC, p)`; `ohg` never
+Shrinkage is a function of `(LFC, SE)`, not `(LFC, p)`; OHG never
 reverse-engineers an SE from a p-value. If only LFC + p are available, winsorize
 `|LFC|` (cap near the 99th percentile) rather than faking shrinkage.
 
 ## Parallelism (HPC)
 
-`ohg` parallelizes the permutation nulls over **distinct set sizes** via `furrr`
+OHG parallelizes the permutation nulls over **distinct set sizes** via `furrr`
 when `n_cores > 1`. It **never calls `plan()` itself** — set the backend yourself:
 
 ```r

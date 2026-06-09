@@ -29,7 +29,7 @@ is the ranked list; there is no separate universe-size argument.}
 \item{gene_sets}{A named list of character vectors, a \code{.gmt} file path, or a
 \code{GSEABase::GeneSetCollection}.}
 
-\item{rank_stat}{Numeric ordering statistic (ordering only — never multiplied
+\item{rank_stat}{Numeric ordering statistic (ordering only -- never multiplied
 into the test); \code{NULL} assumes a fully-resolved order.}
 
 \item{weight}{Numeric effect magnitude (\code{abs()} is used; sign ignored); \code{NULL}
@@ -65,7 +65,7 @@ Runs the ordered / minimum-hypergeometric enrichment test for one ranked gene
 list against a collection of gene sets. The reported \code{p_value} is a
 permutation-calibrated p-value (significance); localization is reported by
 \code{cutoff_rank} and \code{leading_edge_fraction}; magnitude by \code{NLES}. These three
-axes are kept separate and never pre-mixed — the package emits no composite
+axes are kept separate and never pre-mixed -- the package emits no composite
 ranking column.
 }
 \examples{

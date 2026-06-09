@@ -24,7 +24,7 @@ Draws \code{B} random position sets \code{R_b} of size \code{m} uniformly from t
 \code{seq_len(N)} (a random placement of \code{m} hits among \code{N} positions) and evaluates
 the identical tie-aware mHG statistic on each. Because every draw is a size-\code{m}
 subset of the universe, each permutation has exactly \code{m} hits and a leading edge
-of size at least 1 — zero-overlap permutations cannot occur. Position draws and
+of size at least 1 -- zero-overlap permutations cannot occur. Position draws and
 \code{log_stat_b} depend only on \verb{(N, m, boundaries)} and so are portable across
 datasets; the per-permutation leading-edge indices are returned for the
 call-specific effect-size null.

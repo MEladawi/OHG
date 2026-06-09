@@ -55,6 +55,15 @@ validate_inputs <- function(ranked_genes, rank_stat, weight, p_adjust_method = "
       )
     }
     tie_fraction <- mean(duplicated(rank_stat))
+    if (tie_fraction > 0) {
+      message(sprintf(
+        paste0(
+          "rank_stat has ties (%.1f%% of genes share a value); using tie-aware ",
+          "evaluation. Rank by a finer statistic to shrink tie blocks."
+        ),
+        100 * tie_fraction
+      ))
+    }
   }
 
   if (!is.null(weight)) {
@@ -111,6 +120,8 @@ validate_inputs <- function(ranked_genes, rank_stat, weight, p_adjust_method = "
 prune_gene_sets <- function(gene_sets, universe, min_set_size, N) {
   kept <- list()
   dropped <- list()
+  # m = |T_eff| is bounded above by N because T_eff is an intersection with the
+  # universe, so only the lower size filter can ever fire.
   for (nm in names(gene_sets)) {
     t_eff <- intersect(unique(gene_sets[[nm]]), universe)
     m <- length(t_eff)
@@ -119,8 +130,6 @@ prune_gene_sets <- function(gene_sets, universe, min_set_size, N) {
         pathway = nm,
         reason = sprintf("m=%d < min_set_size=%d", m, min_set_size)
       )
-    } else if (m > N) {
-      dropped[[length(dropped) + 1L]] <- tibble::tibble(pathway = nm, reason = "m > N")
     } else {
       kept[[nm]] <- list(genes = t_eff, m = m)
     }

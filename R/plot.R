@@ -24,6 +24,9 @@ plot_ohg_leading_edge <- function(ranked_genes, gene_set, rank_stat = NULL, ...)
     )
   }
   N <- length(ranked_genes)
+  if (!is.null(rank_stat) && length(rank_stat) != N) {
+    stop("`rank_stat` must be the same length as `ranked_genes`.", call. = FALSE)
+  }
   t_eff <- intersect(unique(gene_set), ranked_genes)
   boundaries <- tie_boundaries(rank_stat, n = N)
   stat <- ohg_statistic(ranked_genes, t_eff, N, boundaries = boundaries)

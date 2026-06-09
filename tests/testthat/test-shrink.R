@@ -20,3 +20,9 @@ test_that("clean error when ashr is absent", {
 test_that("length-mismatch errors", {
   expect_error(ohg_shrink_lfc(c(1, 2, 3), c(1, 1)), "same length")
 })
+
+test_that("non-finite and negative se are rejected", {
+  expect_error(ohg_shrink_lfc(c(1, NA), c(1, 1)), "finite")
+  expect_error(ohg_shrink_lfc(c(1, 2), c(1, Inf)), "finite")
+  expect_error(ohg_shrink_lfc(c(1, 2), c(1, -0.5)), "non-negative")
+})

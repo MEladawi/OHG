@@ -28,18 +28,34 @@ coerce_gene_sets <- function(gene_sets) {
       )
     }
     ids <- GSEABase::geneIds(gene_sets)
-    return(purrr::map(ids, \(g) unique(as.character(g))))
+    return(.dedupe_set_names(purrr::map(ids, \(g) unique(as.character(g)))))
   }
   if (is.list(gene_sets)) {
     nm <- names(gene_sets)
     if (is.null(nm) || any(!nzchar(nm))) {
       stop("`gene_sets` list must be fully named (one name per gene set).", call. = FALSE)
     }
-    return(purrr::map(gene_sets, \(g) unique(as.character(g))))
+    return(.dedupe_set_names(purrr::map(gene_sets, \(g) unique(as.character(g)))))
   }
   stop(
     "`gene_sets` must be a named list, a `.gmt` file path, or a ",
     "`GSEABase::GeneSetCollection`.",
     call. = FALSE
   )
+}
+
+# Guard against duplicate gene-set names, which would otherwise silently collapse
+# (one set overwriting another keyed by the same name). Disambiguates with a
+# warning rather than dropping, so both sets survive in the output.
+.dedupe_set_names <- function(sets) {
+  nm <- names(sets)
+  if (anyDuplicated(nm)) {
+    dup <- unique(nm[duplicated(nm)])
+    warning(
+      "Duplicate gene-set name(s) made unique: ", paste(dup, collapse = ", "), ".",
+      call. = FALSE
+    )
+    names(sets) <- make.unique(nm)
+  }
+  sets
 }

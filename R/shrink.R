@@ -23,6 +23,12 @@ ohg_shrink_lfc <- function(lfc, se, method = "ashr") {
   if (length(lfc) != length(se)) {
     stop("`lfc` and `se` must be the same length.", call. = FALSE)
   }
+  if (any(!is.finite(lfc)) || any(!is.finite(se))) {
+    stop("`lfc` and `se` must be finite (no NA/NaN/Inf).", call. = FALSE)
+  }
+  if (any(se < 0)) {
+    stop("`se` must be non-negative (it is a standard error).", call. = FALSE)
+  }
   if (!requireNamespace("ashr", quietly = TRUE)) {
     stop(
       "`ohg_shrink_lfc()` needs the 'ashr' package (in Suggests). ",
