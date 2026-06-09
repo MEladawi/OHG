@@ -13,7 +13,7 @@ toy <- function() {
 
 test_that("default p_adjust is BH and recorded per row", {
   d <- toy()
-  res <- ohg_enrichment(d$ranked, d$sets, n_perm = 500L, seed = 1)
+  res <- ohg_enrichment_quiet(d$ranked, d$sets, n_perm = 500L, seed = 1)
   expect_true(all(res$p_adjust_method == "BH"))
   expect_true(all(res$p_value >= 0 & res$p_value <= 1))
   expect_equal(res$p_adjust, stats::p.adjust(res$p_value, "BH"))
@@ -22,7 +22,7 @@ test_that("default p_adjust is BH and recorded per row", {
 
 test_that("changing method changes p_adjust; pooled once", {
   d <- toy()
-  res_bonf <- ohg_enrichment(d$ranked, d$sets,
+  res_bonf <- ohg_enrichment_quiet(d$ranked, d$sets,
     p_adjust_method = "bonferroni",
     n_perm = 500L, seed = 1
   )
@@ -32,7 +32,7 @@ test_that("changing method changes p_adjust; pooled once", {
 
 test_that("schema columns present; overlap>=1; NES_OHG alias == NLES", {
   d <- toy()
-  res <- ohg_enrichment(d$ranked, d$sets,
+  res <- ohg_enrichment_quiet(d$ranked, d$sets,
     weight = rev(seq_along(d$ranked)),
     n_perm = 1200L, seed = 1
   )

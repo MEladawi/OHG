@@ -7,11 +7,14 @@ test_that("de-dup keeps best rank and warns", {
   expect_identical(v$rank_stat, c(3, 2))
 })
 
-test_that("non-increasing rank_stat is asserted", {
-  expect_error(
-    validate_inputs(c("g1", "g2"), rank_stat = c(1, 5), weight = NULL),
-    "non-increasing|sorted"
+test_that("unsorted rank_stat is sorted descending; genes and weight follow", {
+  v <- validate_inputs(
+    c("g1", "g2", "g3"),
+    rank_stat = c(1, 5, 3), weight = c(10, 20, 30)
   )
+  expect_identical(v$ranked_genes, c("g2", "g3", "g1")) # by rank_stat 5, 3, 1
+  expect_identical(v$rank_stat, c(5, 3, 1))
+  expect_identical(v$weight, c(20, 30, 10)) # weight tracks the gene order
 })
 
 test_that("tie fraction is reported when rank_stat has ties", {

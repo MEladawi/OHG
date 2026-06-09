@@ -4,7 +4,7 @@
 \alias{build_nulls}
 \title{Build one permutation null per distinct set size, reproducibly}
 \usage{
-build_nulls(ms, N, B, boundaries, n_cores = 1L, seed = NULL)
+build_nulls(ms, N, B, boundaries, n_cores = 1L, seed = NULL, L = N, X = 1L)
 }
 \arguments{
 \item{ms}{Integer set sizes (duplicates collapsed internally).}
@@ -18,6 +18,8 @@ build_nulls(ms, N, B, boundaries, n_cores = 1L, seed = NULL)
 \item{n_cores}{Worker count; \verb{> 1} parallelizes when furrr/future are available.}
 
 \item{seed}{Integer base seed or \code{NULL}.}
+
+\item{L, X}{XL-mHG restriction forwarded to \code{\link[=ohg_permutation_null]{ohg_permutation_null()}}.}
 }
 \value{
 A named list of nulls, keyed by \code{as.character(m)}.

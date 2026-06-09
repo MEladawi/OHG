@@ -4,7 +4,7 @@
 \alias{ohg_permutation_null}
 \title{Permutation null for the mHG statistic}
 \usage{
-ohg_permutation_null(N, m, B, boundaries = seq_len(N))
+ohg_permutation_null(N, m, B, boundaries = seq_len(N), L = N, X = 1L)
 }
 \arguments{
 \item{N}{Universe size.}
@@ -14,6 +14,9 @@ ohg_permutation_null(N, m, B, boundaries = seq_len(N))
 \item{B}{Number of permutations.}
 
 \item{boundaries}{Integer tie-block boundaries; use \code{seq_len(N)} for distinct ranks.}
+
+\item{L, X}{XL-mHG restriction passed to the shared kernel (largest cutoff \code{L},
+minimum prefix hits \code{X}); must match the observed path for a valid p-value.}
 }
 \value{
 A list with \code{log_stat_b} (length-\code{B} numeric), \code{overlap_b} (length-\code{B}

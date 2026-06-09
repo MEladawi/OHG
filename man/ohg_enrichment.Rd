@@ -12,35 +12,68 @@ ohg_enrichment(
   direction = NULL,
   p_adjust_method = "BH",
   n_perm = 2000L,
+  target_hits = 10L,
+  n_perm_max = NULL,
+  max_cutoff_frac = 0.25,
+  min_hits = 1L,
+  alpha = 0.05,
   min_set_size = 3L,
   min_perm_nles = 1000L,
   min_nles_support = 10L,
   robust_nles = TRUE,
   collapse_both = FALSE,
-  method = "permutation",
+  method = "adaptive",
   seed = NULL,
   n_cores = 1L
 )
 }
 \arguments{
-\item{ranked_genes}{Unique character vector, most important first. The universe
-is the ranked list; there is no separate universe-size argument.}
+\item{ranked_genes}{Character vector of unique gene ids; the universe is this
+list (no separate universe-size argument). When \code{rank_stat} is supplied OHG
+sorts the genes by it, so the order you pass does not matter; with
+\code{rank_stat = NULL} the given order is taken as the ranking (best first).}
 
 \item{gene_sets}{A named list of character vectors, a \code{.gmt} file path, or a
 \code{GSEABase::GeneSetCollection}.}
 
 \item{rank_stat}{Numeric ordering statistic (ordering only -- never multiplied
-into the test); \code{NULL} assumes a fully-resolved order.}
+into the test); \code{NULL} assumes a fully-resolved order. A signed
+\code{log2FC * -log10(p)} is recommended (continuous, so few ties).}
 
 \item{weight}{Numeric effect magnitude (\code{abs()} is used; sign ignored); \code{NULL}
-yields \code{NLES = NA} with overlap-based outputs still reported.}
+yields \code{NLES = NA} with overlap-based outputs still reported. \code{abs(log2FC)} is
+recommended, ideally on a shrunken fold change (see \code{\link[=ohg_shrink_lfc]{ohg_shrink_lfc()}}).}
 
 \item{direction}{\code{NULL} (inferred from the \code{rank_stat} sign), or one of
 \code{"up"}, \code{"down"}, \code{"both"}.}
 
 \item{p_adjust_method}{Any \code{stats::p.adjust.methods}; default \code{"BH"} (FDR).}
 
-\item{n_perm}{Permutations per distinct set size.}
+\item{n_perm}{Baseline permutations per distinct set size (\code{B0}). Also the
+fixed permutation count when \code{method = "permutation"}.}
+
+\item{target_hits}{Exceedances (\code{h}) a pathway must accumulate before its
+sequential p-value is resolved as \code{h / L}. Only used when
+\code{method = "adaptive"}.}
+
+\item{n_perm_max}{Permutation cap (\code{B_max}). \code{NULL} (default) uses
+\code{max(1e5, ceil(n_tests / alpha))} so a rank-1 pathway can still clear \code{alpha}
+after correction. Only used when \code{method = "adaptive"}.}
+
+\item{max_cutoff_frac}{Largest cutoff the scan may reach, as a fraction of the
+list: \code{L = ceil(max_cutoff_frac * N)}. Keeps the optimal cutoff (and the
+leading edge) near the top instead of placing it deep in the list on a
+diffuse whole-list shift. Default \code{0.25} (top quarter); lower it (e.g. \code{0.10})
+to demand sharper signals, set \code{1} for the unrestricted scan. The same \code{L} is
+applied to the permutation null, so the p-value stays calibrated. The resolved
+\code{L} is attached to the result as \code{attr(x, "L_used")}.}
+
+\item{min_hits}{Minimum leading-edge genes before a cutoff is eligible (XL-mHG
+\code{X}). Default \code{1} (off); \code{3}-\code{5} ignores "enrichment" resting on one or two top
+genes. Attached as \code{attr(x, "X_used")}.}
+
+\item{alpha}{Significance level used only to set the default \code{n_perm_max} and
+to decide whether to warn about cap-limited pathways.}
 
 \item{min_set_size}{Significance-inclusion floor; does not gate \code{NLES}.}
 
@@ -51,14 +84,24 @@ yields \code{NLES = NA} with overlap-based outputs still reported.}
 \item{collapse_both}{If \code{TRUE} with \code{direction = "both"}, keep the more
 significant direction per pathway with a x2 Bonferroni penalty before adjustment.}
 
-\item{method}{\code{"permutation"} (the only implemented method).}
+\item{method}{One of \code{"adaptive"} (default; Besag-Clifford sequential
+Monte-Carlo, removing the \code{1/(n_perm + 1)} floor by spending extra
+permutations only on near-floor pathways), \code{"permutation"} (fixed-\code{n_perm}
+empirical p-value), or \code{"exact"} (the mHG dynamic program, not yet
+implemented).}
 
 \item{seed}{Integer RNG seed or \code{NULL}.}
 
-\item{n_cores}{Worker count; \verb{> 1} parallelizes the per-size nulls via furrr.}
+\item{n_cores}{Worker count. With \verb{> 1} (and \code{future}/\code{furrr} installed) the
+per-size work -- null draws and pathway scoring -- runs in parallel. The
+package sets up the \code{future} plan itself (multicore where supported, else
+multisession) and restores the caller's plan on exit; just pass \code{n_cores}.}
 }
 \value{
 A tibble, one row per \code{(pathway[, direction])}, sorted by \code{p_value}.
+Resampling diagnostics \code{n_perm_used} (draws spent on this size), \code{n_exceed}
+(exceedance count), and \code{resolution_limited} (\code{TRUE} when the cap was hit
+before resolving, so \code{p_value} is a conservative bound) are included.
 }
 \description{
 Runs the ordered / minimum-hypergeometric enrichment test for one ranked gene
@@ -69,8 +112,23 @@ axes are kept separate and never pre-mixed -- the package emits no composite
 ranking column.
 }
 \examples{
+# Minimal: a fully-ordered list, no rank_stat/weight.
 ranked <- paste0("g", 1:200)
 sets <- list(HIT = ranked[1:12], MEH = sample(ranked, 15))
 ohg_enrichment(ranked, sets, n_perm = 500L, seed = 1)
+
+# Recommended recipe from a DE table: clean the log-fold-change once, then
+# rank by clean_lfc * -log10(p) and weight by abs(clean_lfc). OHG sorts by
+# rank_stat for you -- pass the genes in any order.
+set.seed(1)
+lfc <- rnorm(200, sd = 2) # toy log-fold-changes
+p <- runif(200) # toy p-values
+clean_lfc <- ohg_winsorize(lfc) # no SE here -> winsorize; else ohg_shrink_lfc()
+ohg_enrichment(
+  ranked, sets,
+  rank_stat = clean_lfc * -log10(p),
+  weight = abs(clean_lfc),
+  n_perm = 500L, seed = 1
+)
 
 }

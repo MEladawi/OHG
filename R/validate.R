@@ -1,12 +1,14 @@
 #' Validate and normalize OHG inputs
 #'
-#' Enforces the input contract: a non-empty unique character ranking, an aligned
-#' finite non-increasing `rank_stat` (if present), and a `weight` that is finite
-#' (hard error) but otherwise the user's responsibility (soft warnings on
-#' pathological-but-finite values). De-duplicates `ranked_genes`, keeping the best
-#' (earliest) rank.
+#' Enforces the input contract: a non-empty character ranking, an aligned finite
+#' `rank_stat` (if present), and a `weight` that is finite (hard error) but
+#' otherwise the user's responsibility (soft warnings on pathological-but-finite
+#' values). When `rank_stat` is given, **OHG sorts the genes by it (descending)**
+#' so callers need not pre-sort; ties keep their given order. De-duplicates
+#' `ranked_genes`, keeping the best-ranked copy.
 #'
-#' @param ranked_genes Character vector, most important first.
+#' @param ranked_genes Character vector. When `rank_stat` is supplied the order is
+#'   irrelevant (OHG sorts); with `rank_stat = NULL` it is taken as the ranking.
 #' @param rank_stat Numeric ordering statistic aligned to `ranked_genes`, or `NULL`.
 #' @param weight Numeric magnitude aligned to `ranked_genes`, or `NULL`.
 #' @param p_adjust_method One of `stats::p.adjust.methods`.
@@ -30,10 +32,29 @@ validate_inputs <- function(ranked_genes, rank_stat, weight, p_adjust_method = "
     )
   }
 
+  n0 <- length(ranked_genes)
+  if (!is.null(rank_stat) &&
+    (!is.numeric(rank_stat) || length(rank_stat) != n0 || any(!is.finite(rank_stat)))) {
+    stop("`rank_stat` must be finite numeric aligned to `ranked_genes`.", call. = FALSE)
+  }
+  if (!is.null(weight) && (!is.numeric(weight) || length(weight) != n0)) {
+    stop("`weight` must be numeric aligned to `ranked_genes`.", call. = FALSE)
+  }
+
+  # OHG orders the list itself -- callers pass genes and rank_stat in any order.
+  # Sort by rank_stat (descending; stable, so tie blocks keep their given order).
+  if (!is.null(rank_stat)) {
+    ord <- order(rank_stat, decreasing = TRUE)
+    ranked_genes <- ranked_genes[ord]
+    rank_stat <- rank_stat[ord]
+    if (!is.null(weight)) weight <- weight[ord]
+  }
+
+  # De-duplicate, keeping the first (now best-ranked) occurrence of each gene.
   dup <- duplicated(ranked_genes)
   if (any(dup)) {
     warning(
-      sum(dup), " duplicate gene(s) dropped, keeping best (earliest) rank.",
+      sum(dup), " duplicate gene(s) dropped, keeping the best-ranked copy.",
       call. = FALSE
     )
     keep <- !dup
@@ -45,15 +66,6 @@ validate_inputs <- function(ranked_genes, rank_stat, weight, p_adjust_method = "
 
   tie_fraction <- 0
   if (!is.null(rank_stat)) {
-    if (!is.numeric(rank_stat) || length(rank_stat) != N || any(!is.finite(rank_stat))) {
-      stop("`rank_stat` must be finite numeric aligned to `ranked_genes`.", call. = FALSE)
-    }
-    if (is.unsorted(rev(rank_stat))) {
-      stop(
-        "`rank_stat` must be sorted non-increasing (most important first).",
-        call. = FALSE
-      )
-    }
     tie_fraction <- mean(duplicated(rank_stat))
     if (tie_fraction > 0) {
       message(sprintf(
@@ -67,9 +79,6 @@ validate_inputs <- function(ranked_genes, rank_stat, weight, p_adjust_method = "
   }
 
   if (!is.null(weight)) {
-    if (!is.numeric(weight) || length(weight) != N) {
-      stop("`weight` must be numeric aligned to `ranked_genes`.", call. = FALSE)
-    }
     if (any(!is.finite(weight))) {
       stop(
         "`weight` has non-finite values (NA/NaN/Inf). Build any -log10(p) term ",

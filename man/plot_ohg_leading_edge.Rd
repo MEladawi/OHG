@@ -4,16 +4,25 @@
 \alias{plot_ohg_leading_edge}
 \title{Plot the running leading-edge curve for one gene set}
 \usage{
-plot_ohg_leading_edge(ranked_genes, gene_set, rank_stat = NULL, ...)
+plot_ohg_leading_edge(
+  ranked_genes,
+  gene_set,
+  rank_stat = NULL,
+  max_cutoff_frac = 1,
+  min_hits = 1L
+)
 }
 \arguments{
-\item{ranked_genes}{Character vector, most important first.}
+\item{ranked_genes}{Character vector. When \code{rank_stat} is supplied the order is
+irrelevant (the plot sorts by it); with \code{rank_stat = NULL} it is the ranking.}
 
 \item{gene_set}{Character vector of pathway genes.}
 
 \item{rank_stat}{Optional numeric ordering statistic for a tie-aware cutoff.}
 
-\item{...}{Reserved for future use.}
+\item{max_cutoff_frac, min_hits}{XL-mHG restriction for the marked cutoff, matching
+\code{\link[=ohg_enrichment]{ohg_enrichment()}} (\code{L = ceil(max_cutoff_frac * N)}, \code{X = min_hits}). Default
+\code{max_cutoff_frac = 1} (unrestricted); set \code{0.25} to mirror the default analysis.}
 }
 \value{
 A \code{ggplot} object.
@@ -24,7 +33,14 @@ the optimal mHG cutoff. Requires the suggested \code{ggplot2} package.
 }
 \examples{
 \dontrun{
-plot_ohg_leading_edge(paste0("g", 1:50), paste0("g", c(1, 2, 3, 20)))
+genes <- paste0("g", 1:50)
+lfc <- rnorm(50)
+p <- runif(50)
+# same recipe as ohg_enrichment(): clean the LFC, rank by clean_lfc * -log10(p)
+plot_ohg_leading_edge(
+  genes, genes[c(1, 2, 3, 20)],
+  rank_stat = ohg_winsorize(lfc) * -log10(p)
+)
 }
 
 }

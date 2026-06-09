@@ -66,3 +66,34 @@ test_that("mean/SD path available behind robust = FALSE", {
   res <- compute_effect(le_obs, w, le_idx_b, 1, FALSE, 1000L, 10L)
   expect_equal(res$E_obs, mean(w[le_obs]))
 })
+
+test_that("split null-summary + per-pathway helpers reproduce compute_effect", {
+  # The hot path hoists the null-side summary (computed once per set size) out of
+  # the per-pathway loop. The split must be numerically identical to the
+  # single-shot compute_effect for every gating outcome.
+  N <- 100L
+  m <- 8L
+  B <- 1500L
+  le_idx_b <- make_null_le(N, m, B)
+  le_obs <- 1:6
+
+  # (a) ordinary case: finite NLES
+  w <- runif(N, 0.1, 5)
+  ce <- compute_effect(le_obs, w, le_idx_b, -1, TRUE, 1000L, 10L)
+  summ <- .nles_null_summary(le_idx_b, w, TRUE, 1000L, 10L)
+  sp <- .nles_from_summary(le_obs, w, -1, summ)
+  expect_equal(sp$E_obs, ce$E_obs)
+  expect_equal(sp$NLES, ce$NLES)
+  expect_equal(sp$NLES_signed, ce$NLES_signed)
+
+  # (b) gated case: degenerate spread => NA NLES but real E_obs, same as before
+  wc <- rep(2, N)
+  ce2 <- suppressWarnings(compute_effect(le_obs, wc, le_idx_b, 1, TRUE, 1000L, 10L))
+  summ2 <- suppressWarnings(.nles_null_summary(le_idx_b, wc, TRUE, 1000L, 10L))
+  sp2 <- .nles_from_summary(le_obs, wc, 1, summ2)
+  expect_equal(sp2$E_obs, ce2$E_obs)
+  expect_true(is.na(sp2$NLES))
+
+  # (c) the null summary warns once (not per pathway) when gated
+  expect_warning(.nles_null_summary(le_idx_b, wc, TRUE, 1000L, 10L), "near-zero spread")
+})

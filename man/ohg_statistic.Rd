@@ -4,7 +4,7 @@
 \alias{ohg_statistic}
 \title{Minimum-hypergeometric (mHG) statistic in log space}
 \usage{
-ohg_statistic(ranked_genes, T_eff, N, boundaries = NULL)
+ohg_statistic(ranked_genes, T_eff, N, boundaries = NULL, L = N, X = 1L)
 }
 \arguments{
 \item{ranked_genes}{Character vector, most important first (length \code{N}).}
@@ -16,6 +16,13 @@ universe and de-duplicated.}
 
 \item{boundaries}{Optional integer tie-block boundaries from \code{\link[=tie_boundaries]{tie_boundaries()}}.
 When \code{NULL}, distinct ranks are assumed (every position is a boundary).}
+
+\item{L}{Largest cutoff considered (XL-mHG \code{L}): boundaries deeper than \code{L} are
+not eligible for the optimum, so \code{cutoff} never exceeds \code{L}. Default \code{N} (no
+restriction). A set with no hits at or above rank \code{L} returns \code{log_stat = 0}.}
+
+\item{X}{Minimum prefix hits before a cutoff is eligible (XL-mHG \code{X}): only
+boundaries with cumulative hits \verb{>= X} compete. Default \code{1} (off).}
 }
 \value{
 A list with components \code{log_stat} (natural log of the mHG statistic),

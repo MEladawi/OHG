@@ -26,21 +26,35 @@ compute_effect <- function(le_obs, weight, le_idx_b, dir_sign, robust,
   if (is.null(weight)) {
     return(list(E_obs = NA_real_, NLES = NA_real_, NLES_signed = NA_real_))
   }
+  summary <- .nles_null_summary(
+    le_idx_b, weight, robust, min_perm_nles, min_nles_support
+  )
+  .nles_from_summary(le_obs, weight, dir_sign, summary)
+}
 
+# Summarize the permutation null of leading-edge magnitudes for ONE set size.
+# Depends only on (le_idx_b, weight, robust, gates) -- never on the observed
+# pathway -- so every pathway of a given size shares it. The hot path
+# (ohg_enrichment) computes this once per size and reuses it across all pathways
+# of that size, instead of rebuilding E_b per pathway. Warns once (here) when the
+# null is too degenerate or thin to standardize against; the gate is carried in
+# `$gated` for the per-pathway step. Internal kernel helper (cf. .mhg_core).
+.nles_null_summary <- function(le_idx_b, weight, robust,
+                               min_perm_nles, min_nles_support) {
   w <- abs(weight)
   center <- if (robust) stats::median else mean
   scale_fn <- if (robust) stats::mad else stats::sd
 
-  E_obs <- center(w[le_obs])
   E_b <- vapply(le_idx_b, function(idx) center(w[idx]), numeric(1))
-
   B <- length(E_b)
   spread <- scale_fn(E_b)
   eps <- .Machine$double.eps^0.5
   n_distinct <- length(unique(E_b))
 
   degenerate_spread <- !is.finite(spread) || spread < eps
-  if (B < min_perm_nles || degenerate_spread || n_distinct < min_nles_support) {
+  gated <- B < min_perm_nles || degenerate_spread ||
+    n_distinct < min_nles_support
+  if (gated) {
     msg <- if (degenerate_spread) {
       paste0(
         "NLES skipped: the permutation null has near-zero spread (mad(E_b) ~= 0). ",
@@ -66,9 +80,22 @@ compute_effect <- function(le_obs, weight, le_idx_b, dir_sign, robust,
       )
     }
     warning(msg, call. = FALSE)
-    return(list(E_obs = E_obs, NLES = NA_real_, NLES_signed = NA_real_))
   }
 
-  nles <- (E_obs - center(E_b)) / spread
+  list(center = center, center_b = center(E_b), spread = spread, gated = gated)
+}
+
+# Standardize ONE observed leading edge against a precomputed null summary. Cheap
+# per-pathway step: just the observed center and a divide. Mirrors the tail of the
+# old compute_effect exactly. Internal kernel helper (cf. .mhg_core).
+.nles_from_summary <- function(le_obs, weight, dir_sign, summary) {
+  if (is.null(weight)) {
+    return(list(E_obs = NA_real_, NLES = NA_real_, NLES_signed = NA_real_))
+  }
+  E_obs <- summary$center(abs(weight)[le_obs])
+  if (summary$gated) {
+    return(list(E_obs = E_obs, NLES = NA_real_, NLES_signed = NA_real_))
+  }
+  nles <- (E_obs - summary$center_b) / summary$spread
   list(E_obs = E_obs, NLES = nles, NLES_signed = dir_sign * nles)
 }

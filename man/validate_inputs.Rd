@@ -7,7 +7,8 @@
 validate_inputs(ranked_genes, rank_stat, weight, p_adjust_method = "BH")
 }
 \arguments{
-\item{ranked_genes}{Character vector, most important first.}
+\item{ranked_genes}{Character vector. When \code{rank_stat} is supplied the order is
+irrelevant (OHG sorts); with \code{rank_stat = NULL} it is taken as the ranking.}
 
 \item{rank_stat}{Numeric ordering statistic aligned to \code{ranked_genes}, or \code{NULL}.}
 
@@ -20,11 +21,12 @@ A list with the de-duplicated \code{ranked_genes}, aligned \code{rank_stat} and
 \code{weight}, \code{N}, \code{tie_fraction}, and the validated \code{p_adjust_method}.
 }
 \description{
-Enforces the input contract: a non-empty unique character ranking, an aligned
-finite non-increasing \code{rank_stat} (if present), and a \code{weight} that is finite
-(hard error) but otherwise the user's responsibility (soft warnings on
-pathological-but-finite values). De-duplicates \code{ranked_genes}, keeping the best
-(earliest) rank.
+Enforces the input contract: a non-empty character ranking, an aligned finite
+\code{rank_stat} (if present), and a \code{weight} that is finite (hard error) but
+otherwise the user's responsibility (soft warnings on pathological-but-finite
+values). When \code{rank_stat} is given, \strong{OHG sorts the genes by it (descending)}
+so callers need not pre-sort; ties keep their given order. De-duplicates
+\code{ranked_genes}, keeping the best-ranked copy.
 }
 \examples{
 validate_inputs(c("g1", "g2", "g3"), rank_stat = c(3, 2, 1), weight = NULL)

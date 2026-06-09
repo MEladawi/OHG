@@ -13,6 +13,11 @@
 #' @param N Universe size (equal to `length(ranked_genes)`).
 #' @param boundaries Optional integer tie-block boundaries from [tie_boundaries()].
 #'   When `NULL`, distinct ranks are assumed (every position is a boundary).
+#' @param L Largest cutoff considered (XL-mHG `L`): boundaries deeper than `L` are
+#'   not eligible for the optimum, so `cutoff` never exceeds `L`. Default `N` (no
+#'   restriction). A set with no hits at or above rank `L` returns `log_stat = 0`.
+#' @param X Minimum prefix hits before a cutoff is eligible (XL-mHG `X`): only
+#'   boundaries with cumulative hits `>= X` compete. Default `1` (off).
 #'
 #' @return A list with components `log_stat` (natural log of the mHG statistic),
 #'   `cutoff` (optimal prefix size, or `NA`), `overlap` (hits inside the leading
@@ -22,11 +27,11 @@
 #' ohg_statistic(paste0("g", 1:10), c("g1", "g2", "g5"), N = 10L)
 #'
 #' @export
-ohg_statistic <- function(ranked_genes, T_eff, N, boundaries = NULL) {
+ohg_statistic <- function(ranked_genes, T_eff, N, boundaries = NULL, L = N, X = 1L) {
   m <- length(T_eff)
   is_hit <- ranked_genes %in% T_eff
   if (is.null(boundaries)) boundaries <- seq_len(N) # distinct ranks
-  .mhg_core(is_hit, m, N, boundaries)
+  .mhg_core(is_hit, m, N, boundaries, L = L, X = X)
 }
 
 # Internal mHG kernel shared by ohg_statistic() and ohg_permutation_null().
@@ -34,14 +39,21 @@ ohg_statistic <- function(ranked_genes, T_eff, N, boundaries = NULL) {
 # the upper-tail hypergeometric only at boundaries that add a new hit (constant q
 # with larger k can only worsen the tail; statistic plan section 2.3) and returns
 # the most-enriched prefix in natural-log space. The single source of truth for
-# the statistic; both the observed and permutation paths call it.
-.mhg_core <- function(is_hit, m, N, boundaries) {
+# the statistic; both the observed and permutation paths call it. The XL-mHG
+# restriction (k <= L, q >= X) is applied HERE so observed and null pass through
+# the identical code path -- the calibration depends on that (amendment A.4).
+.mhg_core <- function(is_hit, m, N, boundaries, L = N, X = 1L) {
   pos <- which(is_hit)
   if (length(pos) == 0L) {
     return(list(log_stat = 0, cutoff = NA_integer_, overlap = 0L, le_idx = integer(0)))
   }
   q_all <- cumsum(is_hit)[boundaries]
-  keep <- q_all >= 1L & c(TRUE, diff(q_all) > 0L)
+  # Eligible: adds a new hit, has at least X hits, and sits no deeper than L.
+  keep <- q_all >= X & c(TRUE, diff(q_all) > 0L) & boundaries <= L
+  if (!any(keep)) {
+    # Nothing enriched within the top L (or never X hits) -> not a top hit.
+    return(list(log_stat = 0, cutoff = NA_integer_, overlap = 0L, le_idx = integer(0)))
+  }
   k <- boundaries[keep]
   q <- q_all[keep]
 
