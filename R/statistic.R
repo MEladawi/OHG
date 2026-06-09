@@ -25,24 +25,25 @@
 ohg_statistic <- function(ranked_genes, T_eff, N, boundaries = NULL) {
   m <- length(T_eff)
   is_hit <- ranked_genes %in% T_eff
+  if (is.null(boundaries)) boundaries <- seq_len(N) # distinct ranks
+  .mhg_core(is_hit, m, N, boundaries)
+}
+
+# Internal mHG kernel shared by ohg_statistic() and ohg_permutation_null().
+# Given a length-N hit indicator and the candidate cutoff `boundaries`, evaluates
+# the upper-tail hypergeometric only at boundaries that add a new hit (constant q
+# with larger k can only worsen the tail; statistic plan section 2.3) and returns
+# the most-enriched prefix in natural-log space. The single source of truth for
+# the statistic; both the observed and permutation paths call it.
+.mhg_core <- function(is_hit, m, N, boundaries) {
   pos <- which(is_hit)
   if (length(pos) == 0L) {
     return(list(log_stat = 0, cutoff = NA_integer_, overlap = 0L, le_idx = integer(0)))
   }
-
-  if (is.null(boundaries)) {
-    # Distinct-rank fast path: evaluate at each hit position.
-    k <- pos
-    q <- seq_along(pos)
-  } else {
-    # Tie-aware: cumulative hits at each boundary; keep only boundaries that add
-    # a new hit (constant q with larger k can only worsen the tail; §2.3).
-    cum_hits <- cumsum(is_hit)
-    q_all <- cum_hits[boundaries]
-    keep <- q_all >= 1L & c(TRUE, diff(q_all) > 0L)
-    k <- boundaries[keep]
-    q <- q_all[keep]
-  }
+  q_all <- cumsum(is_hit)[boundaries]
+  keep <- q_all >= 1L & c(TRUE, diff(q_all) > 0L)
+  k <- boundaries[keep]
+  q <- q_all[keep]
 
   log_pv <- stats::phyper(
     q = q - 1L, m = m, n = N - m, k = k,
@@ -51,13 +52,11 @@ ohg_statistic <- function(ranked_genes, T_eff, N, boundaries = NULL) {
   log_stat <- min(log_pv)
   j <- max(which(log_pv == log_stat))
   cutoff <- k[j]
-  overlap <- q[j]
-  le_idx <- pos[pos <= cutoff]
 
   list(
     log_stat = log_stat,
     cutoff = as.integer(cutoff),
-    overlap = as.integer(overlap),
-    le_idx = le_idx
+    overlap = as.integer(q[j]),
+    le_idx = pos[pos <= cutoff]
   )
 }

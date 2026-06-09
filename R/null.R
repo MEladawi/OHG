@@ -25,15 +25,7 @@ ohg_permutation_null <- function(N, m, B, boundaries = seq_len(N)) {
   stat_one <- function(pos) {
     is_hit <- logical(N)
     is_hit[pos] <- TRUE
-    q_all <- cumsum(is_hit)[boundaries]
-    keep <- q_all >= 1L & c(TRUE, diff(q_all) > 0L)
-    k <- boundaries[keep]
-    q <- q_all[keep]
-    log_pv <- stats::phyper(q - 1L, m, N - m, k, lower.tail = FALSE, log.p = TRUE)
-    log_stat <- min(log_pv)
-    j <- max(which(log_pv == log_stat))
-    cutoff <- k[j]
-    list(log_stat = log_stat, overlap = q[j], le_idx = pos[pos <= cutoff])
+    .mhg_core(is_hit, m, N, boundaries) # shared kernel (see statistic.R)
   }
 
   draws <- lapply(seq_len(B), function(b) stat_one(sort(sample.int(N, m))))

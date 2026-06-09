@@ -58,7 +58,22 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
   }
 
   if (!is.null(seed)) {
-    RNGkind("L'Ecuyer-CMRG")
+    # Use L'Ecuyer-CMRG for reproducible per-size streams, but leave the caller's
+    # global RNG kind and seed exactly as we found them once we return.
+    had_seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+    old_seed <- if (had_seed) get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+    old_kind <- RNGkind("L'Ecuyer-CMRG")
+    on.exit(
+      {
+        do.call(RNGkind, as.list(old_kind))
+        if (had_seed) {
+          assign(".Random.seed", old_seed, envir = .GlobalEnv)
+        } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+          rm(".Random.seed", envir = .GlobalEnv)
+        }
+      },
+      add = TRUE
+    )
   }
 
   rows <- list()
