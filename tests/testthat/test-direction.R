@@ -30,6 +30,30 @@ test_that("down == up on the reversed list; both pools one adjustment", {
   expect_equal(both$p_adjust, stats::p.adjust(both$p_value, "BH"))
 })
 
+test_that("both-direction rows match separate up/down runs (shared-null safety)", {
+  ranked <- paste0("g", 1:200)
+  rs <- seq(100, -99) # distinct => up and down share boundaries
+  sets <- list(TOP = ranked[1:12], BOTTOM = ranked[189:200])
+
+  both <- ohg_enrichment(ranked, sets,
+    rank_stat = rs, direction = "both", weight = abs(rs), n_perm = 1200L, seed = 1
+  )
+  up <- ohg_enrichment(ranked, sets,
+    rank_stat = rs, direction = "up", weight = abs(rs), n_perm = 1200L, seed = 1
+  )
+  dn <- ohg_enrichment(ranked, sets,
+    rank_stat = rs, direction = "down", weight = abs(rs), n_perm = 1200L, seed = 1
+  )
+
+  bu <- both[both$direction == "up", ]
+  bd <- both[both$direction == "down", ]
+  expect_equal(bu$p_value[order(bu$pathway)], up$p_value[order(up$pathway)])
+  expect_equal(bd$p_value[order(bd$pathway)], dn$p_value[order(dn$pathway)])
+  # effect axis too: null reuse must not corrupt direction-specific E_obs / NLES
+  expect_equal(bd$E_obs[order(bd$pathway)], dn$E_obs[order(dn$pathway)])
+  expect_equal(bd$NLES_signed[order(bd$pathway)], dn$NLES_signed[order(dn$pathway)])
+})
+
 test_that("collapse_both keeps the more significant direction with a x2 penalty", {
   set.seed(8)
   ranked <- paste0("g", 1:200)

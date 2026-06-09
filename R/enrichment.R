@@ -76,7 +76,10 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
     )
   }
 
+  ms <- vapply(pruned$kept, `[[`, integer(1), "m")
   rows <- list()
+  nulls <- NULL
+  prev_boundaries <- NULL
   for (run_dir in dirs) {
     dir_sign <- if (run_dir == "up") 1 else -1
     if (run_dir == "up") {
@@ -90,8 +93,13 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
     }
     boundaries <- tie_boundaries(rs, n = v$N)
 
-    ms <- vapply(pruned$kept, `[[`, integer(1), "m")
-    nulls <- build_nulls(ms, v$N, n_perm, boundaries, n_cores = n_cores, seed = seed)
+    # The null depends only on (N, m, boundaries). When both tails share a
+    # boundary set (e.g. distinct ranks), reuse it rather than rebuilding; tied
+    # data has mirrored boundaries between tails, so it rebuilds as needed.
+    if (is.null(nulls) || !identical(boundaries, prev_boundaries)) {
+      nulls <- build_nulls(ms, v$N, n_perm, boundaries, n_cores = n_cores, seed = seed)
+      prev_boundaries <- boundaries
+    }
 
     rows <- c(rows, purrr::imap(pruned$kept, function(set, nm) {
       stat <- ohg_statistic(rg, set$genes, v$N, boundaries = boundaries)
