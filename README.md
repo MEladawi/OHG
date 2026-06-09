@@ -49,9 +49,11 @@ which combines the p-value's strength with the fold-change's direction:
 ```r
 library(OHG)
 
-# sign(LFC) sets the direction; -log10(p) sets the strength.
-# Alternatives: rank by log2FC alone, or by a moderated-t / Wald z from your DE tool.
-de$rank_stat <- sign(de$log2FC) * -log10(de$pvalue)
+# Recommended: log2FC * -log10(p) -- the sign and size of the fold change set the
+# direction and spread, -log10(p) weights it by evidence. Alternatives: signed
+# significance sign(log2FC) * -log10(p), log2FC alone, or a moderated-t / Wald z.
+# (In real use, clean the fold change first -- see "Cleaning the fold change" below.)
+de$rank_stat <- de$log2FC * -log10(de$pvalue)
 de <- de[order(de$rank_stat, decreasing = TRUE), ]
 ```
 
@@ -67,7 +69,7 @@ pathways <- list(
 res <- ohg_enrichment(
   ranked    = de$gene,
   gene_sets = pathways,
-  rank_stat = de$rank_stat,     # ranking; alternatives: log2FC alone, moderated-t, Wald z
+  rank_stat = de$rank_stat,     # log2FC * -log10(p) recommended (alt: log2FC alone, moderated-t, Wald z)
   weight    = abs(de$log2FC),   # effect size -> NLES; |LFC| recommended (alt: abs(log2FC)*-log10(p), -log10(p))
   direction = "up",             # test the up-regulated end; omit to test both ends
   seed      = 1
@@ -107,20 +109,24 @@ do **different** jobs — confusing them is the one easy mistake:
 
 - **`rank_stat` decides the order.** The values you ranked by. OHG uses it for ties and, via
   its **sign**, to tell up- from down-regulated genes — it is never plugged into the test
-  arithmetic. Common choices: signed significance `sign(log2FC) * -log10(p)`, `log2FC` alone,
-  or a moderated-t / Wald z statistic. Omit it and OHG simply trusts the order you gave.
+  arithmetic. The recommended choice is `log2FC * -log10(p)`: the fold change sets the direction
+  and spread, `-log10(p)` weights it by evidence, and the product is continuous (few ties).
+  Alternatives: signed significance `sign(log2FC) * -log10(p)`, `log2FC` alone, or a moderated-t /
+  Wald z statistic. Omit it and OHG simply trusts the order you gave.
 - **`weight` measures the push.** Each gene's effect size, used only for the magnitude score
-  (`NLES`); OHG uses its size, never its sign. Common choices: `abs(log2FC)`,
-  `abs(log2FC) * -log10(p)` (the "π-value"), or `-log10(p)`. Omit it and `NLES` is `NA` (the
-  overlap and p-value columns still come back).
+  (`NLES`); OHG uses its size, never its sign. The recommended choice is `abs(log2FC)` on a
+  **cleaned** fold change — shrunken with `ohg_shrink_lfc()` if you have a standard error, else
+  winsorized with `ohg_winsorize()` — so noisy low-count genes don't dominate. Alternatives:
+  `abs(log2FC) * -log10(p)` (the "π-value") or `-log10(p)`. Omit it and `NLES` is `NA` (the overlap
+  and p-value columns still come back).
 
 Mnemonic: **`rank_stat` decides where a gene sits; `weight` measures how hard it moved.**
 
 Keep the two complementary: significance already lives in the `p_value` column, so a pure
 effect size like `abs(log2FC)` keeps the magnitude axis separate. Folding significance into the
 weight (`abs(log2FC) * -log10(p)`) is allowed but overlaps `p_value`; for noisy
-large-fold-change genes, prefer `ohg_shrink_lfc()` (below), which cleans `|LFC|` using the
-standard error, not the p-value.
+large-fold-change genes, clean the `|LFC|` first — `ohg_shrink_lfc()` (below) using the standard
+error, or `ohg_winsorize()` when you only have LFC and p.
 
 > When a weight uses `-log10(p)`, build it from the p-values your DE tool reports — never from a
 > p that has underflowed to 0 (`-log10(0) = Inf`). OHG errors on non-finite weights.
@@ -181,28 +187,42 @@ leading edge don't move.
 
 The trade-off is resolution. A metric with large tied blocks — e.g. ranking by `log2FC` when
 many genes round to the same value, or by p-values that are all exactly 1 — gives OHG only a few
-places to draw the cutoff, so the leading edge is coarse. A finer, more continuous metric (a
-moderated-t statistic, or signed significance `sign(log2FC) * -log10(p)`) breaks those ties and
-lets OHG place the cutoff more precisely.
+places to draw the cutoff, so the leading edge is coarse. A finer, more continuous metric (the
+recommended `log2FC * -log10(p)`, or a moderated-t statistic) breaks those ties and lets OHG place
+the cutoff more precisely.
 
 **When `NLES` is `NA`.** The magnitude score needs enough spread in the random background. For
 small or degenerate cases OHG sets `NLES = NA` and warns, but **never drops the pathway** — its
 `p_value`/`p_adjust` stay valid ("enriched, but too small to size the effect reliably").
 
-**Fold-change shrinkage (optional).** If your DE table has a standard error, shrink noisy
-fold-changes before ranking:
+**Cleaning the fold change (recommended).** Both `log2FC * -log10(p)` and `abs(log2FC)` inherit the
+low-count problem: a low-expression gene can show a wild, unreliable fold change that pulls it high
+in the ranking *and* hands it a large weight. Clean the LFC **once**, upstream, then derive both
+inputs from the same cleaned value so the two axes stay consistent:
 
 ```r
-# lfc and se are columns from your DE table, aligned to the same genes
-shrunk <- ohg_shrink_lfc(lfc, se)   # needs the 'ashr' package
+# Prefer shrinkage when you have a standard error; otherwise winsorize the tails.
+clean_lfc <- if ("se" %in% names(de)) {
+  ohg_shrink_lfc(de$log2FC, de$se)   # adaptive shrinkage (needs the 'ashr' package)
+} else {
+  ohg_winsorize(de$log2FC)           # cap the tails, no SE needed (default p = 0.99)
+}
+
+res <- ohg_enrichment(
+  de$gene, pathways,
+  rank_stat = clean_lfc * -log10(de$pvalue),  # signed ordering metric
+  weight    = abs(clean_lfc)                  # magnitude for NLES
+)
 ```
 
-**Big jobs (HPC).** OHG can run the permutation step in parallel; you choose the backend with
-`future::plan()` (it never picks one for you):
+Use one or the other, not both. The OHG core never transforms your weight — it only *warns* about
+pathological ones — so the cleaning stays visible in your own script.
+
+**Big jobs (HPC).** Pass `n_cores > 1` and OHG runs the permutation work in parallel, setting up
+(and restoring) the `future` backend itself — you only need the optional `future` and `furrr`
+packages installed:
 
 ```r
-library(future)
-plan(multicore)
 res <- ohg_enrichment(de$gene, pathways, n_perm = 5000L, seed = 1, n_cores = 8L)
 ```
 
@@ -238,7 +258,8 @@ Results are reproducible across any number of cores for a fixed `seed`.
 | `seed` | `NULL` | Integer for reproducibility; the caller's RNG state is restored afterwards. |
 | `n_cores` | `1` | Parallel workers (needs `furrr`/`future` + a `future::plan()`). Identical results for a fixed `seed`. |
 
-Helpers: `read_gmt()`, `ohg_shrink_lfc()`, `plot_ohg_leading_edge()`. See `?ohg_enrichment`.
+Helpers: `read_gmt()`, `ohg_shrink_lfc()`, `ohg_winsorize()`, `plot_ohg_leading_edge()`.
+See `?ohg_enrichment`.
 
 ### Output columns
 
