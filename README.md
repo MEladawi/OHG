@@ -173,9 +173,17 @@ signal is really 4 of its 80 genes.
 
 ## Notes for specific situations
 
-**Ties in `rank_stat`.** When genes share a value, their order within that block is arbitrary,
-so OHG only cuts *between* tied blocks — results don't depend on how ties are arranged. Large
-tied blocks blur the cutoff; rank by a finer statistic to sharpen it.
+**Ties in `rank_stat`.** Genes with the *exact same* `rank_stat` value form a "tied block", and
+their order inside it is arbitrary — just however your sort happened to break the tie. OHG never
+puts the leading-edge cutoff *inside* a tied block; it takes the whole block or none of it. So if
+those tied genes were shuffled, you'd get the identical result — the cutoff, p-value, and
+leading edge don't move.
+
+The trade-off is resolution. A metric with large tied blocks — e.g. ranking by `log2FC` when
+many genes round to the same value, or by p-values that are all exactly 1 — gives OHG only a few
+places to draw the cutoff, so the leading edge is coarse. A finer, more continuous metric (a
+moderated-t statistic, or signed significance `sign(log2FC) * -log10(p)`) breaks those ties and
+lets OHG place the cutoff more precisely.
 
 **When `NLES` is `NA`.** The magnitude score needs enough spread in the random background. For
 small or degenerate cases OHG sets `NLES = NA` and warns, but **never drops the pathway** — its
