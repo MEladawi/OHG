@@ -4,16 +4,27 @@ Pathway enrichment for a **ranked gene list** — for example, all genes ordered
 most up-regulated to most down-regulated by a differential expression analysis — that
 doesn't make you guess where to draw the "significant genes" cutoff.
 
-## The idea in plain terms
+## Background & motivation
 
-Classic over-representation analysis (ORA) forces a choice: you pick the top *N* genes
-(say, the top 200), then ask whether a pathway shows up more than chance above that line.
-But the answer depends on where you drew the line, and that choice is arbitrary.
+Classic over-representation analysis (ORA) — tools like **Enrichr**, DAVID, or g:Profiler —
+starts by splitting your genes into a "significant" set and everything else, using a
+threshold: usually an FDR or p-value cut (e.g. FDR < 0.05), often combined with a
+fold-change filter. It then asks whether each pathway is over-represented in that
+significant set. Two things make this lossy:
 
-**OHG removes the guess.** Walking down your ranked list, it tries *every* cutoff, scores
-each one with a hypergeometric test ("how surprising is this much overlap in the top-k?"),
-and keeps the single most surprising cutoff. The genes above it are the **leading edge** —
-the part of the pathway actually driving the signal.
+- **The threshold is arbitrary.** FDR < 0.05 vs < 0.10, with or without a fold-change
+  filter, give different gene sets and different enrichment calls.
+- **The ranking is thrown away.** Inside the significant set, genes are an unordered bag —
+  the test is *pure overlap* (a hypergeometric / Fisher count), so a gene that barely cleared
+  the cut counts exactly the same as your strongest hit, and everything below the cut counts
+  for nothing.
+
+**OHG uses the whole ranking and removes the threshold.** Instead of one fixed cut, it walks
+down your ranked list and tries *every* cutoff, scoring each with a hypergeometric test
+("how surprising is this much overlap in the top-k?"), and keeps the single most surprising
+one. Because it works from positions rather than an in-or-out label, a gene's rank matters:
+the genes above the chosen cutoff are the **leading edge** — the part of the pathway actually
+driving the signal.
 
 Because OHG peeked at many cutoffs and kept the best, that raw score is over-optimistic. So
 it **calibrates**: it reruns the same procedure on thousands of random rankings and reports
