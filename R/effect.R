@@ -3,7 +3,7 @@
 #' Standardizes the observed leading-edge magnitude against the permutation null
 #' of leading-edge magnitudes for the same set size. The magnitude axis is always
 #' `abs(weight)`; the sign of `weight` is never read (direction comes from
-#' `dir_sign`). The column — not the pathway — is gated to `NA` when the null
+#' `dir_sign`). The column -- not the pathway -- is gated to `NA` when the null
 #' spread is degenerate or the null is too thin to standardize reliably.
 #'
 #' @param le_obs Integer positions of the observed leading-edge hits.
@@ -43,7 +43,7 @@ compute_effect <- function(le_obs, weight, le_idx_b, dir_sign, robust,
   if (B < min_perm_nles || degenerate_spread || n_distinct < min_nles_support) {
     msg <- if (degenerate_spread) {
       paste0(
-        "NLES skipped: the permutation null has near-zero spread (mad(E_b) ≈ 0). ",
+        "NLES skipped: the permutation null has near-zero spread (mad(E_b) ~= 0). ",
         "This usually means the `weight` vector has a high density of identical or ",
         "exact-zero values, so random leading edges yield near-constant median ",
         "magnitudes."

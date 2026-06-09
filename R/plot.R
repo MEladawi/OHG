@@ -32,7 +32,7 @@ plot_ohg_leading_edge <- function(ranked_genes, gene_set, rank_stat = NULL, ...)
     rank = seq_len(N),
     cum_hits = cumsum(ranked_genes %in% t_eff)
   )
-  ggplot2::ggplot(df, ggplot2::aes(x = .data$rank, y = .data$cum_hits)) +
+  ggplot2::ggplot(df, ggplot2::aes(x = rank, y = cum_hits)) +
     ggplot2::geom_step() +
     ggplot2::geom_vline(
       xintercept = stat$cutoff, linetype = "dashed", colour = "firebrick"
