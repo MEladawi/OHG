@@ -1,23 +1,40 @@
-# OHG
+# OHG — Ordered Hypergeometric enrichment
 
-**Ordered Hypergeometric (minimum-hypergeometric, mHG) enrichment** for one
-ranked gene list — e.g., genes ordered by a differential expression analysis
-(by signed significance, fold change, or a test statistic) — against a collection
-of gene sets (pathways).
+Pathway enrichment for a **ranked gene list** — for example, all genes ordered from
+most up-regulated to most down-regulated by a differential expression analysis — that
+doesn't make you guess where to draw the "significant genes" cutoff.
 
-OHG learns the optimal cutoff from the ranking itself and reports three
-**orthogonal, never-pre-mixed** axes:
+## The idea in plain terms
 
-| Axis | Question | Columns |
+Classic over-representation analysis (ORA) forces a choice: you pick the top *N* genes
+(say, the top 200), then ask whether a pathway shows up more than chance above that line.
+But the answer depends on where you drew the line, and that choice is arbitrary.
+
+**OHG removes the guess.** Walking down your ranked list, it tries *every* cutoff, scores
+each one with a hypergeometric test ("how surprising is this much overlap in the top-k?"),
+and keeps the single most surprising cutoff. The genes above it are the **leading edge** —
+the part of the pathway actually driving the signal.
+
+Because OHG peeked at many cutoffs and kept the best, that raw score is over-optimistic. So
+it **calibrates**: it reruns the same procedure on thousands of random rankings and reports
+where your real score falls among them. The result is an honest, comparable p-value — the
+`minimum-hypergeometric (mHG)` test.
+
+## What you get back: three separate answers
+
+OHG reports three things that are easy to confuse, so it keeps them in **separate columns
+and never blends them into one score**:
+
+| Axis | The question it answers | Columns |
 |---|---|---|
 | **Significance** | Is the top-of-list overlap more than chance? | `p_value`, `p_adjust` |
-| **Localization** | Where is the leading edge, and how much of the set is in it? | `cutoff_rank`, `leading_edge_fraction` |
-| **Magnitude** | How hard did the leading-edge genes move? | `NLES`, `NLES_signed` |
+| **Localization** | Where is the cutoff, and how much of the pathway sits above it? | `cutoff_rank`, `leading_edge_fraction` |
+| **Magnitude** | How strongly did the leading-edge genes actually move? | `NLES`, `NLES_signed` |
 
-The test stays **count-based on purpose**: magnitude never enters the
-hypergeometric p-value — that is what `NLES` (and, in a meta-tool, fGSEA) is for.
-There is **no composite/blended ranking column**; combining axes is a one-line
-downstream choice.
+These measure different things. A pathway can be highly significant on only a few of its
+genes, or modestly significant across most of them — keeping the axes apart lets you tell
+those apart. Combining them into a ranking is a one-liner *you* control (see
+[Ranking your results](#ranking-your-results)); the package never does it for you.
 
 ## Installation
 
@@ -26,163 +43,151 @@ downstream choice.
 remotes::install_github("MEladawi/OHG")    # or install_local() on a clone
 ```
 
-Imports: `stats`, `dplyr`, `purrr`, `tibble`, `stringr`, `methods`.
-Optional (Suggests): `furrr`/`future` (parallel), `ggplot2` (plot), `GSEABase`
-(`GeneSetCollection` input), `ashr` (LFC shrinkage).
+Required: `stats`, `dplyr`, `purrr`, `tibble`, `methods`.
+Optional (only for extra features): `furrr`/`future` (parallel runs), `ggplot2` (plotting),
+`GSEABase` (`GeneSetCollection` input), `ashr` (fold-change shrinkage).
 
 ## Quick start
 
 ```r
 library(OHG)
 
-# A ranked list (most important first) and a few gene sets (pathways).
+# `ranked` is your gene list, most important first.
+# `sets` maps each pathway name to its member genes.
 ranked <- paste0("g", 1:500)
 sets <- list(
-  PATHWAY_A = ranked[c(1:18, 40, 75)],   # strong top enrichment
-  PATHWAY_B = sample(ranked, 30),
+  PATHWAY_A = ranked[c(1:18, 40, 75)],   # clustered near the top -> enriched
+  PATHWAY_B = sample(ranked, 30),        # scattered -> not enriched
   PATHWAY_C = sample(ranked, 22)
 )
 
 res <- ohg_enrichment(ranked, sets, n_perm = 2000L, seed = 1)
+
+# The headline columns:
 res[, c("pathway", "set_size", "cutoff_rank", "leading_edge_fraction",
         "p_value", "p_adjust")]
 ```
 
-Gene sets may also be supplied as a **`.gmt` file** (MSigDB / Enrichr /
-g:Profiler) or a `GSEABase::GeneSetCollection` — all three funnel through
-`coerce_gene_sets()`:
+Each row is one pathway, sorted by `p_value` (most enriched first). `set_size` is how many
+of the pathway's genes are in your list, `cutoff_rank` is where OHG drew the line, and
+`leading_edge_fraction` is the share of the pathway above it.
+
+Your pathways can also come from a **`.gmt` file** (the standard MSigDB / Enrichr /
+g:Profiler format) or a `GSEABase::GeneSetCollection` — just pass it instead of the list:
 
 ```r
 res <- ohg_enrichment(ranked, "path/to/sets.gmt", n_perm = 2000L, seed = 1)
 ```
 
-## `rank_stat` vs `weight` — two inputs, two jobs
+## Two optional inputs, two different jobs: `rank_stat` and `weight`
 
-These are **different** and easy to conflate:
+By default OHG just uses the order you handed it. Two optional arguments let you be more
+precise, and they do **different** jobs — this is the one thing worth getting right:
 
-- **`rank_stat`** decides *where genes sit*. It is **ordering-only** — never
-  multiplied into the statistic (contrast GSEA). Its **sign** separates the
-  up/down tails and sets the default `direction`. A finite signed statistic
-  (`t`, Wald `z`, moderated-`t`, or signed significance `sign(LFC)·-log10(p)`)
-  is ideal because it stays finite where a p-value underflows.
-- **`weight`** measures *effect size* for `NLES`, on a **non-negative magnitude**
-  (`abs(weight)` is used; the sign is ignored). Any finite choice works:
-  `|LFC|`, `|LFC|·-log10(p)`, or `-log10(p)`.
+- **`rank_stat` — *where each gene sits*.** The numeric values you ranked by (e.g. a signed
+  test statistic). OHG uses it only for ordering and to handle ties; it is **never** plugged
+  into the test arithmetic. Its **sign** is what separates up- from down-regulated genes.
+- **`weight` — *how big each gene's effect is*.** Used only to compute the magnitude score
+  (`NLES`). OHG uses its size (`abs(weight)`), never its sign.
 
-> **Build any `-log10(p)` term in log space** from the finite log-p your pipeline
-> already carries — never as `-log10(0) = Inf`. OHG hard-errors on non-finite
-> `weight`.
+A handy way to remember it: **`rank_stat` decides the order; `weight` measures the push.**
 
 ```r
-lfc   <- rnorm(500)
-neglp <- -log10(runif(500))                 # built from finite values
+lfc   <- rnorm(500)               # log fold-changes
+neglp <- -log10(runif(500))       # significance, built from finite p-values
+
 res <- ohg_enrichment(
-  ranked,
-  sets,
-  rank_stat = sort(sign(lfc) * neglp, decreasing = TRUE),  # ordering + sign
-  weight    = abs(lfc) * neglp,                            # magnitude (|π-value|)
+  ranked, sets,
+  rank_stat = sort(sign(lfc) * neglp, decreasing = TRUE),  # order + direction
+  weight    = abs(lfc) * neglp,                            # effect magnitude
   seed = 1
 )
 ```
 
-## Directionality
+> **Tip:** if a weight involves `-log10(p)`, build it from the small log-p your DE tool
+> already provides — never as `-log10(0) = Inf`. OHG stops with an error on non-finite
+> weights rather than silently mangling them.
 
-The test scans only the **top** of the list it is given, so `direction` points it
-at the right tail:
+## Up, down, or both
 
-- `"up"` — list as-is (`NLES_signed = NLES`).
-- `"down"` — runs on the reversed list (`dir_sign = -1`).
-- `"both"` — both runs; each `(pathway, direction)` is a separate hypothesis and
-  **all rows enter one pooled `p_adjust`**. `NLES_signed > 0` means enriched among
-  up-regulated genes, `< 0` among down-regulated.
+OHG only ever scans the **top** of the list it's given, so `direction` just points it at the
+end you care about:
 
-When `direction` is not supplied it is **inferred**: a signed `rank_stat`
-(crosses zero) ⇒ `"both"`; a non-negative or absent `rank_stat` ⇒ `"up"`.
-`collapse_both = TRUE` keeps the more significant direction per pathway with a
-×2 Bonferroni penalty.
+- `"up"` — your list as-is (enrichment among the most up-regulated genes).
+- `"down"` — the reversed list (enrichment among the most down-regulated genes).
+- `"both"` — runs each end separately and reports both, correcting them together. Here
+  `NLES_signed > 0` means the pathway is enriched among up-regulated genes and `< 0` among
+  down-regulated.
 
-## Scoring vs interpreting a term
+If you don't set `direction`, OHG infers it: a `rank_stat` that crosses zero (has both signs)
+defaults to `"both"`; one that's all non-negative (or absent) defaults to `"up"`. Set
+`collapse_both = TRUE` to keep only the stronger direction per pathway (with a ×2 penalty for
+having looked at both).
 
-For a per-term **score** to rank significant pathways:
+## Ranking your results
+
+To turn the table into a ranked shortlist, first keep the significant pathways, then sort by
+magnitude:
 
 ```r
 library(dplyr)
 res |>
-  filter(p_adjust < 0.05) |>     # gate on significance
-  arrange(desc(NLES_signed))     # rank on magnitude
+  filter(p_adjust < 0.05) |>   # 1. keep what's statistically real
+  arrange(desc(NLES_signed))   # 2. rank those by effect strength
 ```
 
-`NLES_signed` is built to be comparable across terms and datasets, so it is
-sufficient as the single ranking score. `leading_edge_fraction = overlap /
-set_size` is **not** a score — it is an **interpretation** (coverage) column.
-The two measure loosely-correlated axes:
+`NLES_signed` is designed to be comparable across pathways and datasets, so it's enough as a
+single ranking score. Keep `leading_edge_fraction` around to **interpret**, not to rank — it
+tells you *coverage*:
 
-- a **low-fraction / high-`NLES`** term is a strong *driver sub-module* of a big
-  pathway (a few genes, large effect);
-- a **high-fraction / low-`NLES`** term is coherent whole-pathway involvement at
-  modest magnitude.
+- **few genes, large effect** (low fraction, high `NLES`): a strong sub-module of a big pathway;
+- **most genes, modest effect** (high fraction, low `NLES`): broad, gentle involvement.
 
-`leading_edge_fraction` is what stops "pathway X is enriched" being over-read as
-whole-pathway when it is 4 of 80 genes.
+It's what stops "pathway X is enriched" from being over-read as the whole pathway when it's
+really 4 of 80 genes.
 
-## Ties
+## Notes for specific situations
 
-When `rank_stat` has ties, cutting *inside* a tie block would make the statistic
-depend on arbitrary within-block order. OHG restricts cutoffs to **tie-block
-boundaries** (a block is included whole or not at all), so the result is
-invariant to within-block permutation. **Tip:** rank by a finer statistic to
-shrink large tie blocks.
+**Ties in `rank_stat`.** If many genes share the same value, the order within that block is
+meaningless, so OHG only ever cuts *between* tied blocks — never inside one. Results are
+therefore unaffected by how ties happen to be ordered. If you have large tied blocks, ranking
+by a finer statistic will sharpen the result.
 
-## Effect-size stability (`NLES = NA`)
+**When `NLES` comes back `NA`.** The magnitude score needs enough spread in the random
+background to be trustworthy. For very small or degenerate cases OHG sets `NLES = NA` and warns
+— but it **never drops the pathway**: its `p_value`/`p_adjust` are still valid. In short:
+"enriched, but too small to size the effect reliably."
 
-`NLES` is gated to `NA` (with a specific warning) — but the pathway is **never
-dropped** and its `p_value`/`p_adjust` stay valid — when the permutation null is
-too thin to size the effect: `mad(E_b) ≈ 0`, fewer than `min_nles_support`
-distinct null magnitudes, or `B < min_perm_nles`. This gate is **independent of
-`min_set_size`**: a small significant set is reported as "enriched, but too small
-to size the effect reliably".
-
-## Optional LFC shrinkage
-
-If your DE table carries a standard error, shrink before ranking — agnostic to DE
-tool:
+**Fold-change shrinkage (optional).** If your DE table has a standard error, you can shrink
+noisy fold-changes before ranking:
 
 ```r
-shrunk <- ohg_shrink_lfc(lfc, se)     # needs 'ashr' (Suggests)
+shrunk <- ohg_shrink_lfc(lfc, se)   # needs the 'ashr' package
 ```
 
-Shrinkage is a function of `(LFC, SE)`, not `(LFC, p)`; OHG never
-reverse-engineers an SE from a p-value. If only LFC + p are available, winsorize
-`|LFC|` (cap near the 99th percentile) rather than faking shrinkage.
+This needs `(LFC, SE)`, not p-values — OHG never tries to reverse-engineer a standard error
+from a p-value. If you only have LFC and p, cap extreme `|LFC|` values instead.
 
-## Parallelism (HPC)
-
-OHG parallelizes the permutation nulls over **distinct set sizes** via `furrr`
-when `n_cores > 1`. It **never calls `plan()` itself** — set the backend yourself:
+**Big jobs (HPC).** OHG can run the permutation step in parallel over distinct pathway sizes.
+It never picks a backend for you — you set one with `future::plan()`:
 
 ```r
 library(future)
-plan(multicore)     # Unix/HPC: forked workers share the weight via copy-on-write
+plan(multicore)   # Unix/HPC; forked workers share memory efficiently
 res <- ohg_enrichment(ranked, sets, n_perm = 5000L, seed = 1, n_cores = 8L)
 ```
 
-`plan(multicore)` is recommended for Unix/HPC batch jobs (avoid in RStudio;
-falls back to `multisession` on Windows). Results are reproducible across core
-counts for a fixed `seed` (per-size RNG streams keyed to `m`). In a batch script,
-read the worker count from the scheduler:
+Results are reproducible across any number of cores for a fixed `seed`. On a cluster, read the
+core count from the scheduler: `as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", "1"))`.
 
-```r
-cores <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", "1"))
-```
+## Full output columns
 
-## Output schema
+One row per pathway (or per pathway × direction), sorted by `p_value`:
 
-One row per `(pathway[, direction])`, sorted by `p_value`: `pathway`,
-`direction` (when `direction != "up"`), `set_size`, `cutoff_rank`,
-`leading_edge_size`, `overlap`, `leading_edge_fraction`, `neg_log10_mHG`,
-`mHG_stat`, `p_value`, `p_adjust`, `p_adjust_method`, `E_obs`, `NLES`,
-`NLES_signed`, `n_leading_edge`, `hits`. (`NES_OHG` is a deprecated alias for
-`NLES`.)
+`pathway`, `direction` (only when not `"up"`), `set_size`, `cutoff_rank`,
+`leading_edge_size`, `overlap`, `leading_edge_fraction`, `neg_log10_mHG`, `mHG_stat`,
+`p_value`, `p_adjust`, `p_adjust_method`, `E_obs`, `NLES`, `NLES_signed`, `n_leading_edge`,
+`hits`. (`NES_OHG` is a deprecated alias for `NLES`.)
 
 ## License
 
