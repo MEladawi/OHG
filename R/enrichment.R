@@ -101,15 +101,15 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
     }))
   }
 
-  out <- dplyr::bind_rows(rows)
+  out <- purrr::list_rbind(rows)
   if (nrow(out) == 0L) {
     stop("No pathway had overlap >= 1.", call. = FALSE)
   }
 
   if (isTRUE(collapse_both) && dir == "both") {
-    out$p_value <- pmin(1, out$p_value * 2)
-    out <- out[order(out$pathway, out$p_value), ]
-    out <- out[!duplicated(out$pathway), ]
+    out <- out |>
+      dplyr::mutate(p_value = pmin(1, p_value * 2)) |>
+      dplyr::slice_min(p_value, n = 1L, by = pathway, with_ties = FALSE)
   }
 
   out$p_adjust <- stats::p.adjust(out$p_value, method = p_adjust_method)

@@ -30,6 +30,30 @@ test_that("down == up on the reversed list; both pools one adjustment", {
   expect_equal(both$p_adjust, stats::p.adjust(both$p_value, "BH"))
 })
 
+test_that("collapse_both keeps the more significant direction with a x2 penalty", {
+  set.seed(8)
+  ranked <- paste0("g", 1:200)
+  rs <- seq(100, -99)
+  sets <- list(TOP = ranked[1:12], BOTTOM = ranked[189:200])
+
+  both <- ohg_enrichment(ranked, sets,
+    rank_stat = rs, direction = "both", n_perm = 500L, seed = 1
+  )
+  coll <- ohg_enrichment(ranked, sets,
+    rank_stat = rs, direction = "both", collapse_both = TRUE,
+    n_perm = 500L, seed = 1
+  )
+
+  # one row per pathway after collapsing
+  expect_equal(nrow(coll), length(unique(coll$pathway)))
+  expect_setequal(coll$pathway, c("TOP", "BOTTOM"))
+
+  # collapsed p_value is the per-pathway minimum, x2-penalized and capped at 1
+  best <- dplyr::summarise(both, p = min(p_value), .by = pathway)
+  expected <- pmin(1, best$p[match(coll$pathway, best$pathway)] * 2)
+  expect_equal(coll$p_value, expected)
+})
+
 test_that("inferred direction: signed => direction column, non-negative => up only", {
   set.seed(5)
   ranked <- paste0("g", 1:120)

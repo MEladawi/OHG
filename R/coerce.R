@@ -28,14 +28,14 @@ coerce_gene_sets <- function(gene_sets) {
       )
     }
     ids <- GSEABase::geneIds(gene_sets)
-    return(lapply(ids, function(g) unique(as.character(g))))
+    return(purrr::map(ids, \(g) unique(as.character(g))))
   }
   if (is.list(gene_sets)) {
     nm <- names(gene_sets)
     if (is.null(nm) || any(!nzchar(nm))) {
       stop("`gene_sets` list must be fully named (one name per gene set).", call. = FALSE)
     }
-    return(lapply(gene_sets, function(g) unique(as.character(g))))
+    return(purrr::map(gene_sets, \(g) unique(as.character(g))))
   }
   stop(
     "`gene_sets` must be a named list, a `.gmt` file path, or a ",
