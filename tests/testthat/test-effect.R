@@ -97,3 +97,15 @@ test_that("split null-summary + per-pathway helpers reproduce compute_effect", {
   # (c) the null summary warns once (not per pathway) when gated
   expect_warning(.nles_null_summary(le_idx_b, wc, TRUE, 1000L, 10L), "near-zero spread")
 })
+
+test_that(".eb_from_leidx is the single E_b definition and abs's signed weights", {
+  set.seed(7)
+  null <- ohg_permutation_null(N = 120L, m = 8L, B = 200L)
+  w_signed <- rnorm(120)
+  # E_b computed via the helper ...
+  eb_helper <- .eb_from_leidx(null$le_idx_b, w_signed, robust = TRUE)
+  # ... must equal the explicit abs+median formula it replaces.
+  center <- stats::median
+  eb_manual <- vapply(null$le_idx_b, function(idx) center(abs(w_signed)[idx]), numeric(1))
+  expect_identical(eb_helper, eb_manual)
+})

@@ -32,20 +32,30 @@ compute_effect <- function(le_obs, weight, le_idx_b, dir_sign, robust,
   .nles_from_summary(le_obs, weight, dir_sign, summary)
 }
 
-# Summarize the permutation null of leading-edge magnitudes for ONE set size.
-# Depends only on (le_idx_b, weight, robust, gates) -- never on the observed
-# pathway -- so every pathway of a given size shares it. The hot path
-# (ohg_enrichment) computes this once per size and reuses it across all pathways
-# of that size, instead of rebuilding E_b per pathway. Warns once (here) when the
-# null is too degenerate or thin to standardize against; the gate is carried in
-# `$gated` for the per-pathway step. Internal kernel helper (cf. .mhg_core).
-.nles_null_summary <- function(le_idx_b, weight, robust,
-                               min_perm_nles, min_nles_support) {
+# Single definition of E_b -- the per-permutation null leading-edge
+# magnitudes -- from leading-edge indices. `weight` (= ctx$w) is SIGNED, so
+# this helper owns the abs; the magnitude axis is always abs(weight). Both the
+# fixed-B path (.nles_null_summary) and the adaptive path
+# (.adaptive_draw_increment) call this, so their E_b match by construction.
+# Internal kernel helper (cf. .mhg_core).
+.eb_from_leidx <- function(le_idx_b, weight, robust) {
   w <- abs(weight)
+  center <- if (robust) stats::median else mean
+  vapply(le_idx_b, function(idx) center(w[idx]), numeric(1))
+}
+
+# Summarize a precomputed null E_b vector for ONE set size+direction: spread,
+# distinct-count, the stability gates, and the single warning. Depends only
+# on (E_b, robust, gates) -- never on the observed pathway -- so every pathway
+# of a given size+direction shares it. Splitting this out lets the adaptive
+# engine feed an E_b accumulated across rounds (no redraw) while the fixed-B
+# path feeds an E_b built fresh from le_idx_b. The B-gate is written against
+# length(E_b) directly, so it stays correct under any later
+# n_perm/min_perm_nles default change. Internal kernel helper (cf. .mhg_core).
+.nles_summary_from_Eb <- function(E_b, robust, min_perm_nles, min_nles_support) {
   center <- if (robust) stats::median else mean
   scale_fn <- if (robust) stats::mad else stats::sd
 
-  E_b <- vapply(le_idx_b, function(idx) center(w[idx]), numeric(1))
   B <- length(E_b)
   spread <- scale_fn(E_b)
   eps <- .Machine$double.eps^0.5
@@ -83,6 +93,18 @@ compute_effect <- function(le_obs, weight, le_idx_b, dir_sign, robust,
   }
 
   list(center = center, center_b = center(E_b), spread = spread, gated = gated)
+}
+
+# Summarize the permutation null of leading-edge magnitudes for ONE set size
+# from a fresh le_idx_b (fixed-B path / compute_effect). Builds E_b via the
+# shared .eb_from_leidx() helper, then delegates to .nles_summary_from_Eb().
+# The hot path (ohg_enrichment, method = "permutation") computes this once per
+# size and reuses it across all pathways of that size. Internal kernel helper
+# (cf. .mhg_core).
+.nles_null_summary <- function(le_idx_b, weight, robust,
+                               min_perm_nles, min_nles_support) {
+  E_b <- .eb_from_leidx(le_idx_b, weight, robust)
+  .nles_summary_from_Eb(E_b, robust, min_perm_nles, min_nles_support)
 }
 
 # Standardize ONE observed leading edge against a precomputed null summary. Cheap
