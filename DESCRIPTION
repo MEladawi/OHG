@@ -1,6 +1,6 @@
 Package: OHG
 Title: Ordered Hypergeometric (Minimum-Hypergeometric) Enrichment
-Version: 0.0.0.9000
+Version: 0.1.0
 Authors@R:
     person("Mahmoud", "Eladawi", email = "eladawimahmoud@tutamail.com", role = c("aut", "cre"))
 Description: Ordered / minimum-hypergeometric (mHG) enrichment test for one ranked
