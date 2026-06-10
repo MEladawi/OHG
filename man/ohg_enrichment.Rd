@@ -37,8 +37,8 @@ sorts the genes by it, so the order you pass does not matter; with
 \code{GSEABase::GeneSetCollection}.}
 
 \item{rank_stat}{Numeric ordering statistic (ordering only -- never multiplied
-into the test); \code{NULL} assumes a fully-resolved order. A signed
-\code{log2FC * -log10(p)} is recommended (continuous, so few ties).}
+into the test); \code{NULL} assumes a fully-resolved order. Signed significance
+\code{sign(log2FC) * -log10(p)} is recommended (continuous, so few ties).}
 
 \item{weight}{Numeric effect magnitude (\code{abs()} is used; sign ignored); \code{NULL}
 yields \code{NLES = NA} with overlap-based outputs still reported. \code{abs(log2FC)} is
@@ -72,8 +72,8 @@ applied to the permutation null, so the p-value stays calibrated. The resolved
 \code{X}). Default \code{1} (off); \code{3}-\code{5} ignores "enrichment" resting on one or two top
 genes. Attached as \code{attr(x, "X_used")}.}
 
-\item{alpha}{Significance level used only to set the default \code{n_perm_max} and
-to decide whether to warn about cap-limited pathways.}
+\item{alpha}{Significance level used to set the default \code{n_perm_max} and to
+decide whether to warn about cap-limited pathways.}
 
 \item{min_set_size}{Significance-inclusion floor; does not gate \code{NLES}.}
 
@@ -117,16 +117,16 @@ ranked <- paste0("g", 1:200)
 sets <- list(HIT = ranked[1:12], MEH = sample(ranked, 15))
 ohg_enrichment(ranked, sets, n_perm = 500L, seed = 1)
 
-# Recommended recipe from a DE table: clean the log-fold-change once, then
-# rank by clean_lfc * -log10(p) and weight by abs(clean_lfc). OHG sorts by
-# rank_stat for you -- pass the genes in any order.
+# Recommended recipe from a DE table: rank by signed significance
+# sign(log2FC) * -log10(p); clean the log-fold-change for the weight abs(clean_lfc).
+# OHG sorts by rank_stat for you -- pass the genes in any order.
 set.seed(1)
 lfc <- rnorm(200, sd = 2) # toy log-fold-changes
 p <- runif(200) # toy p-values
 clean_lfc <- ohg_winsorize(lfc) # no SE here -> winsorize; else ohg_shrink_lfc()
 ohg_enrichment(
   ranked, sets,
-  rank_stat = clean_lfc * -log10(p),
+  rank_stat = sign(lfc) * -log10(p),
   weight = abs(clean_lfc),
   n_perm = 500L, seed = 1
 )

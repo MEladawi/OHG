@@ -14,8 +14,8 @@
 #' @param gene_sets A named list of character vectors, a `.gmt` file path, or a
 #'   `GSEABase::GeneSetCollection`.
 #' @param rank_stat Numeric ordering statistic (ordering only -- never multiplied
-#'   into the test); `NULL` assumes a fully-resolved order. A signed
-#'   `log2FC * -log10(p)` is recommended (continuous, so few ties).
+#'   into the test); `NULL` assumes a fully-resolved order. Signed significance
+#'   `sign(log2FC) * -log10(p)` is recommended (continuous, so few ties).
 #' @param weight Numeric effect magnitude (`abs()` is used; sign ignored); `NULL`
 #'   yields `NLES = NA` with overlap-based outputs still reported. `abs(log2FC)` is
 #'   recommended, ideally on a shrunken fold change (see [ohg_shrink_lfc()]).
@@ -40,18 +40,8 @@
 #' @param min_hits Minimum leading-edge genes before a cutoff is eligible (XL-mHG
 #'   `X`). Default `1` (off); `3`-`5` ignores "enrichment" resting on one or two top
 #'   genes. Attached as `attr(x, "X_used")`.
-#' @param alpha Significance level used to set the default `n_perm_max`, to decide
-#'   whether to warn about cap-limited pathways, and (unless `gate_alpha` is given)
-#'   as the level the adaptive accept gate protects.
-#' @param gate_alpha BH level the adaptive accept gate protects; `NULL` (default)
-#'   uses `alpha`. A pathway stops drawing early once it cannot reach this level no
-#'   matter how it resolves. Set finer (e.g. `0.01`) to stop sooner. Only used when
-#'   `method = "adaptive"`.
-#' @param gate_conf Total simultaneous error budget of the gate's confidence
-#'   bracket (default `0.05`): the accept set matches a full `n_perm_max` run with
-#'   probability `>= 1 - gate_conf`. Smaller is safer and ramps slightly more. A
-#'   pathway accepted early (confidently non-significant) may draw fewer than
-#'   `min_perm_nles` permutations and so report `NLES = NA`. Adaptive only.
+#' @param alpha Significance level used to set the default `n_perm_max` and to
+#'   decide whether to warn about cap-limited pathways.
 #' @param min_set_size Significance-inclusion floor; does not gate `NLES`.
 #' @param min_perm_nles,min_nles_support `NLES` stability gates.
 #' @param robust_nles Median/MAD (default) versus mean/SD.
@@ -79,16 +69,16 @@
 #' sets <- list(HIT = ranked[1:12], MEH = sample(ranked, 15))
 #' ohg_enrichment(ranked, sets, n_perm = 500L, seed = 1)
 #'
-#' # Recommended recipe from a DE table: clean the log-fold-change once, then
-#' # rank by clean_lfc * -log10(p) and weight by abs(clean_lfc). OHG sorts by
-#' # rank_stat for you -- pass the genes in any order.
+#' # Recommended recipe from a DE table: rank by signed significance
+#' # sign(log2FC) * -log10(p); clean the log-fold-change for the weight abs(clean_lfc).
+#' # OHG sorts by rank_stat for you -- pass the genes in any order.
 #' set.seed(1)
 #' lfc <- rnorm(200, sd = 2) # toy log-fold-changes
 #' p <- runif(200) # toy p-values
 #' clean_lfc <- ohg_winsorize(lfc) # no SE here -> winsorize; else ohg_shrink_lfc()
 #' ohg_enrichment(
 #'   ranked, sets,
-#'   rank_stat = clean_lfc * -log10(p),
+#'   rank_stat = sign(lfc) * -log10(p),
 #'   weight = abs(clean_lfc),
 #'   n_perm = 500L, seed = 1
 #' )
@@ -98,7 +88,7 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
                            direction = NULL, p_adjust_method = "BH", n_perm = 2000L,
                            target_hits = 10L, n_perm_max = NULL,
                            max_cutoff_frac = 0.25, min_hits = 1L,
-                           alpha = 0.05, gate_alpha = NULL, gate_conf = 0.05,
+                           alpha = 0.05,
                            min_set_size = 3L, min_perm_nles = 1000L,
                            min_nles_support = 10L, robust_nles = TRUE,
                            collapse_both = FALSE, method = "adaptive",
@@ -108,13 +98,6 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
     stop("method = 'exact' is not implemented yet.", call. = FALSE)
   }
   adaptive <- method == "adaptive"
-  # Level the accept gate protects (defaults to the reporting `alpha`) and the
-  # simultaneous error budget of its confidence bracket.
-  gate_alpha <- if (is.null(gate_alpha)) alpha else gate_alpha
-  if (length(gate_conf) != 1L || !is.finite(gate_conf) ||
-    gate_conf <= 0 || gate_conf >= 1) {
-    stop("`gate_conf` must be a single number in (0, 1).", call. = FALSE)
-  }
 
   v <- validate_inputs(ranked_genes, rank_stat, weight, p_adjust_method)
   sets <- coerce_gene_sets(gene_sets)
@@ -274,14 +257,11 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
     rows_m
   }
 
-  # Adaptive path (method = "adaptive"): a global, multiplicity-aware ramp. Every
-  # (set size, orientation) group advances in lockstep geometric rounds. Genuine
-  # candidates still resolve to `target_hits` exceedances (Besag-Clifford h/L); the
-  # gate adds an early DECIDED-ACCEPT stop for any ramping pathway whose BH decision
-  # is already determined -- its Clopper-Pearson lower p-bound exceeds the highest BH
-  # threshold the future could produce (`tau_hi`). Such a pathway cannot become
-  # significant no matter how it resolves, so it stops drawing. With simultaneous
-  # confidence 1 - gate_conf the accept set matches a full n_perm_max run.
+  # Adaptive path (method = "adaptive"): a sequential Besag-Clifford ramp. Every
+  # (set size, orientation) group advances in lockstep geometric rounds, resolving
+  # each pathway to `target_hits` exceedances (Besag-Clifford h/L). A group keeps
+  # drawing while any of its pathways is still ramping, doubling the budget each
+  # round and capping at n_perm_max.
   run_adaptive <- function() {
     # Base seed for the per-m streams. A user `seed` switches the run to
     # L'Ecuyer-CMRG above; with seed = NULL we still draw one internal base so the
@@ -303,11 +283,11 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
         n = length(keep), b_used = 0L,
         # `c` carries the pathway names so n_exceed = g$c[i] reproduces the named
         # scalar the old c_final[i] (from vapply over named g$obs) produced; names
-        # never enter numeric ops (the gate/p-values index positionally/logically).
+        # never enter numeric ops (the p-values index positionally/logically).
         c = stats::setNames(integer(length(keep)), names(obs_named)),
         L_hit = rep(NA_integer_, length(keep)), rng_state = NULL,
         E_b = NULL,
-        status = rep("ramping", length(keep)) # ramping|resolved|accepted|capped
+        status = rep("ramping", length(keep)) # ramping|resolved|capped
       )
     }
     # Build all groups for one size (both orientations) -- the observed-statistic
@@ -332,11 +312,6 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
     if (length(groups) == 0L) {
       return(list())
     }
-
-    # Per-bound Clopper-Pearson error budget, split simultaneously across all m
-    # pathways (the eventual BH denominator) and the lower side: gate_conf / (2m).
-    m_total <- sum(vapply(groups, function(g) g$n, integer(1)))
-    gamma <- gate_conf / (2 * m_total)
 
     b_target <- n_perm0
     repeat {
@@ -382,40 +357,21 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
         break
       }
 
-      po <- lapply(
-        groups, .group_p_opt,
-        target_hits = target_hits, b_max = b_max, gamma = gamma
-      )
-      accept <- .gate_decisions(
-        unlist(lapply(po, `[[`, "p_opt"), use.names = FALSE),
-        unlist(lapply(po, `[[`, "ramping"), use.names = FALSE),
-        gate_alpha
-      )
-      off <- 0L
-      for (gi in seq_along(groups)) {
-        idx <- off + seq_len(groups[[gi]]$n)
-        newly <- accept[idx] & groups[[gi]]$status == "ramping"
-        groups[[gi]]$status[newly] <- "accepted"
-        off <- off + groups[[gi]]$n
-      }
       b_target <- min(b_target * 2L, b_max)
     }
 
     # Finalize each group from state accumulated during the rounds -- NO redraw.
-    # resolved -> h/L (g$L_hit); accepted -> (c+1)/(b_used+1) (certified
-    # non-significant, NOT flagged resolution_limited); capped -> (c+1)/(b_max+1),
-    # resolution_limited. n_exceed = g$c counts exceedances over the group's full
-    # b_used (it keeps accumulating after a pathway resolves, while the group
-    # stays alive for a deeper sibling) -- identical to the old finalize redraw.
-    # The NLES null summary comes from the accumulated group-level g$E_b.
+    # resolved -> h/L (g$L_hit); capped -> (c+1)/(b_max+1), resolution_limited.
+    # n_exceed = g$c counts exceedances over the group's full b_used (it keeps
+    # accumulating after a pathway resolves, while the group stays alive for a
+    # deeper sibling) -- identical to the old finalize redraw. The NLES null
+    # summary comes from the accumulated group-level g$E_b.
     finalize_group <- function(g) {
       resolved <- g$status == "resolved"
       capped <- g$status == "capped"
       p_val <- numeric(g$n)
       p_val[resolved] <- target_hits / g$L_hit[resolved]
       p_val[capped] <- (g$c[capped] + 1) / (b_max + 1)
-      accepted <- !resolved & !capped
-      p_val[accepted] <- (g$c[accepted] + 1) / (g$b_used + 1)
 
       summ <- if (is.null(v$weight)) {
         NULL

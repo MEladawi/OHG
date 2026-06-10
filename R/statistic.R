@@ -72,3 +72,36 @@ ohg_statistic <- function(ranked_genes, T_eff, N, boundaries = NULL, L = N, X = 
     le_idx = pos[pos <= cutoff]
   )
 }
+
+# O(m) tie-free twin of .mhg_core. When every rank is its own tie-block
+# (boundaries == seq_len(N)), the eligible cutoffs are exactly the hit positions in
+# the top L, so the length-N keep/q_all/is_hit machinery collapses to the sorted hit
+# positions `pos`. Byte-identical to .mhg_core on tie-free input; the permutation
+# null passes its already-sorted sample here directly, never materializing is_hit.
+# `pos` must be the ascending hit positions; `m == length(pos)`. Internal kernel.
+.mhg_core_pos <- function(pos, m, N, L = N, X = 1L) {
+  none <- list(
+    log_stat = 0, cutoff = NA_integer_, overlap = 0L, le_idx = integer(0)
+  )
+  if (length(pos) == 0L) {
+    return(none)
+  }
+  jL <- sum(pos <= L) # hits within the top L (pos is sorted ascending)
+  if (jL < X) {
+    return(none) # fewer than X hits in the top L -> not a top hit
+  }
+  q <- X:jL # candidate overlaps; the cutoffs are the hit positions at those ranks
+  k <- pos[q]
+  log_pv <- stats::phyper(
+    q = q - 1L, m = m, n = N - m, k = k,
+    lower.tail = FALSE, log.p = TRUE
+  )
+  log_stat <- min(log_pv)
+  overlap <- q[max(which(log_pv == log_stat))]
+  list(
+    log_stat = log_stat,
+    cutoff = as.integer(pos[overlap]),
+    overlap = as.integer(overlap),
+    le_idx = pos[seq_len(overlap)]
+  )
+}

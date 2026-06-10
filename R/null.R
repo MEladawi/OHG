@@ -24,13 +24,23 @@
 #'
 #' @export
 ohg_permutation_null <- function(N, m, B, boundaries = seq_len(N), L = N, X = 1L) {
-  stat_one <- function(pos) {
-    is_hit <- logical(N)
-    is_hit[pos] <- TRUE
-    .mhg_core(is_hit, m, N, boundaries, L = L, X = X) # shared kernel (statistic.R)
+  # Tie-free (continuous metric): the sampled hit positions ARE the eligible
+  # cutoffs, so the O(m) kernel takes them directly -- never building the length-N
+  # is_hit. Decided once here, not per draw. Tied metrics fall back to .mhg_core.
+  # Both paths consume the identical sample.int() stream, so output is byte-for-byte
+  # unchanged and reproducible across cores for a fixed seed.
+  if (identical(boundaries, seq_len(N))) {
+    draws <- lapply(seq_len(B), function(b) {
+      .mhg_core_pos(sort(sample.int(N, m)), m, N, L = L, X = X)
+    })
+  } else {
+    stat_one <- function(pos) {
+      is_hit <- logical(N)
+      is_hit[pos] <- TRUE
+      .mhg_core(is_hit, m, N, boundaries, L = L, X = X) # shared kernel (statistic.R)
+    }
+    draws <- lapply(seq_len(B), function(b) stat_one(sort(sample.int(N, m))))
   }
-
-  draws <- lapply(seq_len(B), function(b) stat_one(sort(sample.int(N, m))))
   list(
     log_stat_b = vapply(draws, `[[`, numeric(1), "log_stat"),
     overlap_b = vapply(draws, function(d) as.integer(d$overlap), integer(1)),
@@ -138,49 +148,4 @@ build_nulls <- function(ms, N, B, boundaries, n_cores = 1L, seed = NULL,
     delta_c = delta_c, L_hit = L_hit, rng_state = new_state,
     delta_E_b = delta_E_b
   )
-}
-
-# One-sided Clopper-Pearson (Beta) LOWER bound on a pathway's exceedance rate given
-# `c` exceedances in `n` draws -- the smallest true p consistent with the draws at
-# the simultaneous confidence carried in `gamma`. This is the "best case" a pathway
-# could still resolve to: if even this optimistic p is non-significant after BH, no
-# further draws can rescue it (DECIDED-ACCEPT). `c == 0` -> 0 (no exceedances yet
-# could still be highly significant; never auto-accepted, ref amendment section 7).
-# `gamma` is the per-bound error budget, split simultaneously across all m pathways
-# and the lower side: `gamma = gate_conf / (2 * m)`. Internal helper.
-.p_lower_cp <- function(c, n, gamma) {
-  ifelse(c == 0L, 0, stats::qbeta(gamma, c, pmax(n - c + 1L, 1L)))
-}
-
-# Each pathway's contribution to the global BH multiset used by the accept gate,
-# plus the mask of pathways still ramping. `resolved` -> h / L (locked once the
-# target_hits-th exceedance is reached); `accepted`/`capped` -> their fixed reported
-# estimate; a still-`ramping` pathway contributes its Clopper-Pearson lower bound
-# (`.p_lower_cp`) -- its best achievable p. Feeding the lower bound to the BH step-up
-# makes "stop ramping" the rigorous DECIDED-ACCEPT test: BH-adjusting this multiset
-# and accepting where padj(pLo) > gate_alpha is exactly `pLo > tau_hi` (the highest
-# threshold the future could produce), so acceptance is safe. Internal helper.
-.group_p_opt <- function(g, target_hits, b_max, gamma) {
-  st <- g$status
-  p <- numeric(g$n)
-  res <- st == "resolved"
-  acc <- st == "accepted"
-  cap <- st == "capped"
-  rmp <- st == "ramping"
-  p[res] <- target_hits / g$L_hit[res]
-  p[acc] <- (g$c[acc] + 1) / (g$b_used + 1)
-  p[cap] <- (g$c[cap] + 1) / (b_max + 1)
-  p[rmp] <- .p_lower_cp(g$c[rmp], g$b_used, gamma)
-  list(p_opt = p, ramping = rmp)
-}
-
-# The multiplicity gate. Given the global provisional p multiset (best case for the
-# ramping pathways) and which entries are ramping, BH-adjust and stop ramping any
-# pathway whose best-case adjusted p already exceeds `alpha`. Because every ramping
-# pathway is scored at its floor here, each one's adjusted p is the smallest it can
-# ever attain (own p minimal, competition maximal), so gating on `padj > alpha`
-# never drops a pathway that could become significant. Internal helper.
-.gate_decisions <- function(p_opt, ramping, alpha) {
-  padj <- stats::p.adjust(p_opt, method = "BH")
-  ramping & (padj > alpha)
 }

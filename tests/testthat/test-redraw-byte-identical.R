@@ -1,8 +1,9 @@
-# Byte-identity guards for the adaptive redraw elimination. The goldens were
-# snapshotted from the pre-refactor build (characterization baseline) and must
-# pass before AND after the refactor (proof that removing the redraw changed
-# nothing). A refactor guard, not a fail-first test: if it ever fails, the
-# refactor altered observable output.
+# Byte-identity regression guard for the adaptive engine output. The goldens are a
+# snapshot of run_redraw_fixture() on the current build; if a change alters
+# observable output they fail, flagging it for review. (Originally created to prove
+# the finalize-redraw elimination changed nothing; regenerated after the accept-gate
+# removal, which legitimately changed one fixture pathway -- a single-pathway group
+# the gate used to accept-stop early now resolves normally.)
 
 test_that("heterogeneous-group adaptive result is byte-identical to golden", {
   golden <- readRDS(test_path("fixtures", "redraw_golden_hetero.rds"))
