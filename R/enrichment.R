@@ -296,11 +296,17 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
       if (length(keep) == 0L) {
         return(NULL)
       }
+      obs_named <- vapply(stats[keep], `[[`, numeric(1), "log_stat")
       list(
         m = m, ctx = ctx, sets_m = sets_m, keep = keep, stats = stats,
-        obs = vapply(stats[keep], `[[`, numeric(1), "log_stat"),
-        n = length(keep), b_used = 0L, c = integer(length(keep)),
+        obs = obs_named,
+        n = length(keep), b_used = 0L,
+        # `c` carries the pathway names so n_exceed = g$c[i] reproduces the named
+        # scalar the old c_final[i] (from vapply over named g$obs) produced; names
+        # never enter numeric ops (the gate/p-values index positionally/logically).
+        c = stats::setNames(integer(length(keep)), names(obs_named)),
         L_hit = rep(NA_integer_, length(keep)), rng_state = NULL,
+        E_b = NULL,
         status = rep("ramping", length(keep)) # ramping|resolved|accepted|capped
       )
     }
@@ -344,7 +350,8 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
           g$obs, g$m, v$N, g$ctx$boundaries,
           n_new = b_target - g$b_used, rng_state = g$rng_state,
           c_prev = g$c, b_used_prev = g$b_used, seed = aseed,
-          target_hits = target_hits, L = L, X = X
+          target_hits = target_hits, L = L, X = X,
+          weight = g$ctx$w, robust = robust_nles
         )
       }
       drawn <- if (use_par) {
@@ -359,6 +366,7 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
         gi <- active[k]
         d <- drawn[[k]]
         groups[[gi]]$c <- groups[[gi]]$c + d$delta_c
+        groups[[gi]]$E_b <- c(groups[[gi]]$E_b, d$delta_E_b)
         groups[[gi]]$rng_state <- d$rng_state
         groups[[gi]]$b_used <- b_target
         # lock L_hit and resolve only pathways crossing target_hits this round
@@ -393,31 +401,27 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
       b_target <- min(b_target * 2L, b_max)
     }
 
-    # Finalize each group: redraw to its final b_used to recover leading edges for
-    # the (direction-specific) NLES, then build rows. resolved -> h/L; accepted ->
-    # (c+1)/(b_used+1) (certified non-significant, NOT flagged resolution_limited);
-    # capped -> (c+1)/(b_max+1), resolution_limited.
+    # Finalize each group from state accumulated during the rounds -- NO redraw.
+    # resolved -> h/L (g$L_hit); accepted -> (c+1)/(b_used+1) (certified
+    # non-significant, NOT flagged resolution_limited); capped -> (c+1)/(b_max+1),
+    # resolution_limited. n_exceed = g$c counts exceedances over the group's full
+    # b_used (it keeps accumulating after a pathway resolves, while the group
+    # stays alive for a deeper sibling) -- identical to the old finalize redraw.
+    # The NLES null summary comes from the accumulated group-level g$E_b.
     finalize_group <- function(g) {
-      set.seed(aseed + g$m)
-      nb <- ohg_permutation_null(v$N, g$m, g$b_used, g$ctx$boundaries, L = L, X = X)
-      c_final <- vapply(g$obs, function(o) sum(nb$log_stat_b <= o), integer(1))
-      L_hit <- vapply(g$obs, function(o) {
-        w <- which(cumsum(nb$log_stat_b <= o) >= target_hits)[1L]
-        if (is.na(w)) NA_integer_ else as.integer(w)
-      }, integer(1))
       resolved <- g$status == "resolved"
       capped <- g$status == "capped"
       p_val <- numeric(g$n)
-      p_val[resolved] <- target_hits / L_hit[resolved]
-      p_val[capped] <- (c_final[capped] + 1) / (b_max + 1)
+      p_val[resolved] <- target_hits / g$L_hit[resolved]
+      p_val[capped] <- (g$c[capped] + 1) / (b_max + 1)
       accepted <- !resolved & !capped
-      p_val[accepted] <- (c_final[accepted] + 1) / (g$b_used + 1)
+      p_val[accepted] <- (g$c[accepted] + 1) / (g$b_used + 1)
 
       summ <- if (is.null(v$weight)) {
         NULL
       } else {
-        .nles_null_summary(
-          nb$le_idx_b, g$ctx$w, robust_nles, min_perm_nles, min_nles_support
+        .nles_summary_from_Eb(
+          g$E_b, robust_nles, min_perm_nles, min_nles_support
         )
       }
       purrr::imap(g$keep, function(j, i) {
@@ -430,7 +434,7 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
           overlap = st$overlap, leading_edge_fraction = st$overlap / set$m,
           neg_log10_mHG = -st$log_stat / log(10), mHG_stat = exp(st$log_stat),
           p_value = p_val[i], n_perm_used = g$b_used,
-          n_exceed = c_final[i], resolution_limited = capped[i],
+          n_exceed = g$c[i], resolution_limited = capped[i],
           E_obs = eff$E_obs, NLES = eff$NLES, NLES_signed = eff$NLES_signed,
           n_leading_edge = st$overlap, hits = paste(g$ctx$rg[st$le_idx], collapse = " ")
         )
