@@ -99,38 +99,76 @@ build_nulls <- function(ms, N, B, boundaries, n_cores = 1L, seed = NULL,
   }
 }
 
-# Adaptive sequential null for ALL pathways of one (set size, orientation). Draws a
-# baseline `n_perm0`, then expands the SAME resumable RNG stream in geometric
-# batches (doubling) until the strongest candidate accumulates `target_hits`
-# exceedances or the stream reaches `n_perm_max`; every pathway reads its own
-# (c, L) off the shared stream. Reusing one stream makes the result independent of
-# how the draws are batched. Returns per-pathway p_hat/n_exceed/resolution_limited,
-# the shared `n_perm_used`, and the accumulated `le_idx_b` buffer for NLES.
-# Internal kernel helper (cf. .mhg_core); seeding/scoping is owned by the caller.
-.adaptive_null <- function(obs_log_stats, m, N, boundaries,
-                           n_perm0, n_perm_max, target_hits, seed, L = N, X = 1L) {
-  if (!is.null(seed)) set.seed(seed + m) # resumable stream keyed to m, not order
-  log_stat_b <- numeric(0)
-  le_idx_b <- list()
-  b_used <- 0L
-  repeat {
-    batch <- if (b_used == 0L) n_perm0 else b_used # geometric doubling
-    batch <- min(batch, n_perm_max - b_used)
-    draw <- ohg_permutation_null(N, m, batch, boundaries, L = L, X = X)
-    log_stat_b <- c(log_stat_b, draw$log_stat_b)
-    le_idx_b <- c(le_idx_b, draw$le_idx_b)
-    b_used <- length(log_stat_b)
-    c_i <- vapply(obs_log_stats, function(o) sum(log_stat_b <= o), integer(1))
-    if (b_used >= n_perm_max || all(c_i >= target_hits)) break
+# Draw the NEXT `n_new` permutations of the size-`m` null, continuing one resumable
+# RNG stream (seeded `seed + m` on the first call, then resumed from `rng_state`) so
+# the rounds never redraw work already done -- the cumulative stream is identical to
+# a single `set.seed(seed + m); draw(b_used)`, which is what the finalize pass uses
+# to recover leading edges. Returns each pathway's exceedance increment `delta_c`,
+# the global draw index at which it first reaches `target_hits` (`L_hit`, given the
+# carried `c_prev`/`b_used_prev`, NA if not yet), and the advanced `rng_state`. All
+# payloads are tiny integer vectors, so a worker ships them back cheaply. Internal.
+.adaptive_draw_increment <- function(obs_log_stats, m, N, boundaries, n_new,
+                                     rng_state, c_prev, b_used_prev, seed,
+                                     target_hits, L = N, X = 1L) {
+  if (is.null(rng_state)) {
+    set.seed(seed + m) # first draw: open the stream keyed to m
+  } else {
+    assign(".Random.seed", rng_state, envir = .GlobalEnv) # resume where we stopped
   }
-  fin <- lapply(obs_log_stats, function(o) {
-    .bc_finalize(log_stat_b, o, target_hits, n_perm_max)
-  })
-  list(
-    p_hat = vapply(fin, `[[`, numeric(1), "p_hat"),
-    n_exceed = vapply(fin, `[[`, integer(1), "n_exceed"),
-    resolution_limited = vapply(fin, `[[`, logical(1), "resolution_limited"),
-    n_perm_used = b_used,
-    le_idx_b = le_idx_b
-  )
+  lsb <- ohg_permutation_null(N, m, n_new, boundaries, L = L, X = X)$log_stat_b
+  new_state <- get(".Random.seed", envir = .GlobalEnv)
+  delta_c <- integer(length(obs_log_stats))
+  L_hit <- rep(NA_integer_, length(obs_log_stats))
+  for (i in seq_along(obs_log_stats)) {
+    hits <- lsb <= obs_log_stats[i]
+    delta_c[i] <- sum(hits)
+    w <- which(c_prev[i] + cumsum(hits) >= target_hits)[1L]
+    if (!is.na(w)) L_hit[i] <- as.integer(b_used_prev + w)
+  }
+  list(delta_c = delta_c, L_hit = L_hit, rng_state = new_state)
+}
+
+# One-sided Clopper-Pearson (Beta) LOWER bound on a pathway's exceedance rate given
+# `c` exceedances in `n` draws -- the smallest true p consistent with the draws at
+# the simultaneous confidence carried in `gamma`. This is the "best case" a pathway
+# could still resolve to: if even this optimistic p is non-significant after BH, no
+# further draws can rescue it (DECIDED-ACCEPT). `c == 0` -> 0 (no exceedances yet
+# could still be highly significant; never auto-accepted, ref amendment section 7).
+# `gamma` is the per-bound error budget, split simultaneously across all m pathways
+# and the lower side: `gamma = gate_conf / (2 * m)`. Internal helper.
+.p_lower_cp <- function(c, n, gamma) {
+  ifelse(c == 0L, 0, stats::qbeta(gamma, c, pmax(n - c + 1L, 1L)))
+}
+
+# Each pathway's contribution to the global BH multiset used by the accept gate,
+# plus the mask of pathways still ramping. `resolved` -> h / L (locked once the
+# target_hits-th exceedance is reached); `accepted`/`capped` -> their fixed reported
+# estimate; a still-`ramping` pathway contributes its Clopper-Pearson lower bound
+# (`.p_lower_cp`) -- its best achievable p. Feeding the lower bound to the BH step-up
+# makes "stop ramping" the rigorous DECIDED-ACCEPT test: BH-adjusting this multiset
+# and accepting where padj(pLo) > gate_alpha is exactly `pLo > tau_hi` (the highest
+# threshold the future could produce), so acceptance is safe. Internal helper.
+.group_p_opt <- function(g, target_hits, b_max, gamma) {
+  st <- g$status
+  p <- numeric(g$n)
+  res <- st == "resolved"
+  acc <- st == "accepted"
+  cap <- st == "capped"
+  rmp <- st == "ramping"
+  p[res] <- target_hits / g$L_hit[res]
+  p[acc] <- (g$c[acc] + 1) / (g$b_used + 1)
+  p[cap] <- (g$c[cap] + 1) / (b_max + 1)
+  p[rmp] <- .p_lower_cp(g$c[rmp], g$b_used, gamma)
+  list(p_opt = p, ramping = rmp)
+}
+
+# The multiplicity gate. Given the global provisional p multiset (best case for the
+# ramping pathways) and which entries are ramping, BH-adjust and stop ramping any
+# pathway whose best-case adjusted p already exceeds `alpha`. Because every ramping
+# pathway is scored at its floor here, each one's adjusted p is the smallest it can
+# ever attain (own p minimal, competition maximal), so gating on `padj > alpha`
+# never drops a pathway that could become significant. Internal helper.
+.gate_decisions <- function(p_opt, ramping, alpha) {
+  padj <- stats::p.adjust(p_opt, method = "BH")
+  ramping & (padj > alpha)
 }

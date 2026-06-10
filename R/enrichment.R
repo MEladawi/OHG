@@ -40,8 +40,18 @@
 #' @param min_hits Minimum leading-edge genes before a cutoff is eligible (XL-mHG
 #'   `X`). Default `1` (off); `3`-`5` ignores "enrichment" resting on one or two top
 #'   genes. Attached as `attr(x, "X_used")`.
-#' @param alpha Significance level used only to set the default `n_perm_max` and
-#'   to decide whether to warn about cap-limited pathways.
+#' @param alpha Significance level used to set the default `n_perm_max`, to decide
+#'   whether to warn about cap-limited pathways, and (unless `gate_alpha` is given)
+#'   as the level the adaptive accept gate protects.
+#' @param gate_alpha BH level the adaptive accept gate protects; `NULL` (default)
+#'   uses `alpha`. A pathway stops drawing early once it cannot reach this level no
+#'   matter how it resolves. Set finer (e.g. `0.01`) to stop sooner. Only used when
+#'   `method = "adaptive"`.
+#' @param gate_conf Total simultaneous error budget of the gate's confidence
+#'   bracket (default `0.05`): the accept set matches a full `n_perm_max` run with
+#'   probability `>= 1 - gate_conf`. Smaller is safer and ramps slightly more. A
+#'   pathway accepted early (confidently non-significant) may draw fewer than
+#'   `min_perm_nles` permutations and so report `NLES = NA`. Adaptive only.
 #' @param min_set_size Significance-inclusion floor; does not gate `NLES`.
 #' @param min_perm_nles,min_nles_support `NLES` stability gates.
 #' @param robust_nles Median/MAD (default) versus mean/SD.
@@ -88,7 +98,8 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
                            direction = NULL, p_adjust_method = "BH", n_perm = 2000L,
                            target_hits = 10L, n_perm_max = NULL,
                            max_cutoff_frac = 0.25, min_hits = 1L,
-                           alpha = 0.05, min_set_size = 3L, min_perm_nles = 1000L,
+                           alpha = 0.05, gate_alpha = NULL, gate_conf = 0.05,
+                           min_set_size = 3L, min_perm_nles = 1000L,
                            min_nles_support = 10L, robust_nles = TRUE,
                            collapse_both = FALSE, method = "adaptive",
                            seed = NULL, n_cores = 1L) {
@@ -97,6 +108,13 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
     stop("method = 'exact' is not implemented yet.", call. = FALSE)
   }
   adaptive <- method == "adaptive"
+  # Level the accept gate protects (defaults to the reporting `alpha`) and the
+  # simultaneous error budget of its confidence bracket.
+  gate_alpha <- if (is.null(gate_alpha)) alpha else gate_alpha
+  if (length(gate_conf) != 1L || !is.finite(gate_conf) ||
+    gate_conf <= 0 || gate_conf >= 1) {
+    stop("`gate_conf` must be a single number in (0, 1).", call. = FALSE)
+  }
 
   v <- validate_inputs(ranked_genes, rank_stat, weight, p_adjust_method)
   sets <- coerce_gene_sets(gene_sets)
@@ -195,72 +213,48 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
     )
   })
 
-  # One parallel unit per distinct set size: a worker draws that size's null and
-  # scores every pathway (and direction) of that size, so the heavy work (null
-  # draws + NLES standardization) runs on the worker and only small result rows
-  # return. RNG is keyed to m (set.seed(seed + m)), so results are identical
-  # sequentially or in parallel and across worker counts. With adaptive = TRUE the
-  # sequential null is decided per (size, orientation) -- re-seeded per orientation
-  # so a `both` run's draws match the separate up/down runs exactly. With
-  # adaptive = FALSE the fixed-B null is reused across tails when boundaries match.
   by_size <- split(pruned$kept, vapply(pruned$kept, `[[`, integer(1), "m"))
   sizes <- as.integer(names(by_size))
 
-  score_size <- function(sets_m, m) {
-    fixed_cache <- list() # fixed-B path: null draws keyed by boundaries
+  # Fixed-B path (method = "permutation"): one parallel unit per distinct set size.
+  # A worker draws that size's null once (reused across tails when boundaries
+  # match) and scores every pathway and direction; RNG is keyed to m so results
+  # are identical sequentially or in parallel and across worker counts.
+  score_size_fixed <- function(sets_m, m) {
+    fixed_cache <- list() # null draws keyed by boundaries
     rows_m <- list()
     for (ctx in dir_ctx) {
       stats <- lapply(sets_m, function(set) {
         ohg_statistic(ctx$rg, set$genes, v$N, boundaries = ctx$boundaries, L = L, X = X)
       })
-      # unname so imap() below indexes p_info by position, not by pathway name
+      # unname so imap() below indexes by position, not by pathway name
       keep <- unname(which(vapply(stats, function(s) s$overlap >= 1L, logical(1))))
       if (length(keep) == 0L) next
       obs <- vapply(stats[keep], `[[`, numeric(1), "log_stat")
 
-      if (adaptive) {
-        an <- .adaptive_null(
-          obs, m, v$N, ctx$boundaries, n_perm0, b_max, target_hits, seed,
-          L = L, X = X
-        )
-        le_idx_b <- an$le_idx_b
-        p_info <- list(
-          p = an$p_hat, c = an$n_exceed,
-          used = an$n_perm_used, rl = an$resolution_limited
-        )
-      } else {
-        nb <- NULL
-        for (nc in fixed_cache) {
-          if (identical(nc$boundaries, ctx$boundaries)) {
-            nb <- nc$nb
-            break
-          }
+      nb <- NULL
+      for (nc in fixed_cache) {
+        if (identical(nc$boundaries, ctx$boundaries)) {
+          nb <- nc$nb
+          break
         }
-        if (is.null(nb)) {
-          if (!is.null(seed)) set.seed(seed + m) # stream keyed to m, not order
-          nb <- ohg_permutation_null(v$N, m, n_perm, ctx$boundaries, L = L, X = X)
-          fixed_cache <- c(
-            fixed_cache, list(list(boundaries = ctx$boundaries, nb = nb))
-          )
-        }
-        le_idx_b <- nb$le_idx_b
-        c_exc <- vapply(obs, function(o) sum(nb$log_stat_b <= o), integer(1))
-        p_info <- list(
-          p = (1 + c_exc) / (1 + n_perm), c = c_exc,
-          used = n_perm, rl = rep(FALSE, length(keep))
+      }
+      if (is.null(nb)) {
+        if (!is.null(seed)) set.seed(seed + m) # stream keyed to m, not order
+        nb <- ohg_permutation_null(v$N, m, n_perm, ctx$boundaries, L = L, X = X)
+        fixed_cache <- c(
+          fixed_cache, list(list(boundaries = ctx$boundaries, nb = nb))
         )
       }
+      c_exc <- vapply(obs, function(o) sum(nb$log_stat_b <= o), integer(1))
 
-      # NLES summary uses this direction's weights -> direction-specific; hoisted
-      # once per (size, direction) from the (possibly expanded) null buffer.
       summ <- if (is.null(v$weight)) {
         NULL
       } else {
         .nles_null_summary(
-          le_idx_b, ctx$w, robust_nles, min_perm_nles, min_nles_support
+          nb$le_idx_b, ctx$w, robust_nles, min_perm_nles, min_nles_support
         )
       }
-
       rows_m <- c(rows_m, purrr::imap(keep, function(j, i) {
         st <- stats[[j]]
         set <- sets_m[[j]]
@@ -270,8 +264,8 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
           cutoff_rank = st$cutoff, leading_edge_size = st$cutoff,
           overlap = st$overlap, leading_edge_fraction = st$overlap / set$m,
           neg_log10_mHG = -st$log_stat / log(10), mHG_stat = exp(st$log_stat),
-          p_value = p_info$p[i], n_perm_used = p_info$used,
-          n_exceed = p_info$c[i], resolution_limited = p_info$rl[i],
+          p_value = (1 + c_exc[i]) / (1 + n_perm), n_perm_used = n_perm,
+          n_exceed = c_exc[i], resolution_limited = FALSE,
           E_obs = eff$E_obs, NLES = eff$NLES, NLES_signed = eff$NLES_signed,
           n_leading_edge = st$overlap, hits = paste(ctx$rg[st$le_idx], collapse = " ")
         )
@@ -280,13 +274,187 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
     rows_m
   }
 
-  results <- if (use_par) {
+  # Adaptive path (method = "adaptive"): a global, multiplicity-aware ramp. Every
+  # (set size, orientation) group advances in lockstep geometric rounds. Genuine
+  # candidates still resolve to `target_hits` exceedances (Besag-Clifford h/L); the
+  # gate adds an early DECIDED-ACCEPT stop for any ramping pathway whose BH decision
+  # is already determined -- its Clopper-Pearson lower p-bound exceeds the highest BH
+  # threshold the future could produce (`tau_hi`). Such a pathway cannot become
+  # significant no matter how it resolves, so it stops drawing. With simultaneous
+  # confidence 1 - gate_conf the accept set matches a full n_perm_max run.
+  run_adaptive <- function() {
+    # Base seed for the per-m streams. A user `seed` switches the run to
+    # L'Ecuyer-CMRG above; with seed = NULL we still draw one internal base so the
+    # per-round redraws and the leading-edge redraw stay mutually consistent.
+    aseed <- if (is.null(seed)) sample.int(.Machine$integer.max, 1L) else seed
+
+    prep_group <- function(sets_m, m, ctx) {
+      stats <- lapply(sets_m, function(set) {
+        ohg_statistic(ctx$rg, set$genes, v$N, boundaries = ctx$boundaries, L = L, X = X)
+      })
+      keep <- unname(which(vapply(stats, function(s) s$overlap >= 1L, logical(1))))
+      if (length(keep) == 0L) {
+        return(NULL)
+      }
+      list(
+        m = m, ctx = ctx, sets_m = sets_m, keep = keep, stats = stats,
+        obs = vapply(stats[keep], `[[`, numeric(1), "log_stat"),
+        n = length(keep), b_used = 0L, c = integer(length(keep)),
+        L_hit = rep(NA_integer_, length(keep)), rng_state = NULL,
+        status = rep("ramping", length(keep)) # ramping|resolved|accepted|capped
+      )
+    }
+    # Build all groups for one size (both orientations) -- the observed-statistic
+    # scan is the same O(sets * N) cost as a null draw, so run it on the workers
+    # (one size per task), not serially in the orchestrator.
+    build_size <- function(sets_m, m) {
+      out <- list()
+      for (ctx in dir_ctx) {
+        g <- prep_group(sets_m, m, ctx)
+        if (!is.null(g)) out <- c(out, list(g))
+      }
+      out
+    }
+    groups <- purrr::list_flatten(if (use_par) {
+      furrr::future_map2(
+        by_size, sizes, build_size,
+        .options = furrr::furrr_options(seed = TRUE)
+      )
+    } else {
+      purrr::map2(by_size, sizes, build_size)
+    })
+    if (length(groups) == 0L) {
+      return(list())
+    }
+
+    # Per-bound Clopper-Pearson error budget, split simultaneously across all m
+    # pathways (the eventual BH denominator) and the lower side: gate_conf / (2m).
+    m_total <- sum(vapply(groups, function(g) g$n, integer(1)))
+    gamma <- gate_conf / (2 * m_total)
+
+    b_target <- n_perm0
+    repeat {
+      active <- which(vapply(groups, function(g) {
+        any(g$status == "ramping") && g$b_used < b_max
+      }, logical(1)))
+      if (length(active) == 0L) break
+
+      draw_one <- function(g) {
+        .adaptive_draw_increment(
+          g$obs, g$m, v$N, g$ctx$boundaries,
+          n_new = b_target - g$b_used, rng_state = g$rng_state,
+          c_prev = g$c, b_used_prev = g$b_used, seed = aseed,
+          target_hits = target_hits, L = L, X = X
+        )
+      }
+      drawn <- if (use_par) {
+        furrr::future_map(
+          groups[active], draw_one,
+          .options = furrr::furrr_options(seed = TRUE)
+        )
+      } else {
+        lapply(groups[active], draw_one)
+      }
+      for (k in seq_along(active)) {
+        gi <- active[k]
+        d <- drawn[[k]]
+        groups[[gi]]$c <- groups[[gi]]$c + d$delta_c
+        groups[[gi]]$rng_state <- d$rng_state
+        groups[[gi]]$b_used <- b_target
+        # lock L_hit and resolve only pathways crossing target_hits this round
+        newly <- groups[[gi]]$status == "ramping" & !is.na(d$L_hit)
+        groups[[gi]]$L_hit[newly] <- d$L_hit[newly]
+        groups[[gi]]$status[newly] <- "resolved"
+      }
+
+      if (b_target >= b_max) {
+        for (gi in active) {
+          groups[[gi]]$status[groups[[gi]]$status == "ramping"] <- "capped"
+        }
+        break
+      }
+
+      po <- lapply(
+        groups, .group_p_opt,
+        target_hits = target_hits, b_max = b_max, gamma = gamma
+      )
+      accept <- .gate_decisions(
+        unlist(lapply(po, `[[`, "p_opt"), use.names = FALSE),
+        unlist(lapply(po, `[[`, "ramping"), use.names = FALSE),
+        gate_alpha
+      )
+      off <- 0L
+      for (gi in seq_along(groups)) {
+        idx <- off + seq_len(groups[[gi]]$n)
+        newly <- accept[idx] & groups[[gi]]$status == "ramping"
+        groups[[gi]]$status[newly] <- "accepted"
+        off <- off + groups[[gi]]$n
+      }
+      b_target <- min(b_target * 2L, b_max)
+    }
+
+    # Finalize each group: redraw to its final b_used to recover leading edges for
+    # the (direction-specific) NLES, then build rows. resolved -> h/L; accepted ->
+    # (c+1)/(b_used+1) (certified non-significant, NOT flagged resolution_limited);
+    # capped -> (c+1)/(b_max+1), resolution_limited.
+    finalize_group <- function(g) {
+      set.seed(aseed + g$m)
+      nb <- ohg_permutation_null(v$N, g$m, g$b_used, g$ctx$boundaries, L = L, X = X)
+      c_final <- vapply(g$obs, function(o) sum(nb$log_stat_b <= o), integer(1))
+      L_hit <- vapply(g$obs, function(o) {
+        w <- which(cumsum(nb$log_stat_b <= o) >= target_hits)[1L]
+        if (is.na(w)) NA_integer_ else as.integer(w)
+      }, integer(1))
+      resolved <- g$status == "resolved"
+      capped <- g$status == "capped"
+      p_val <- numeric(g$n)
+      p_val[resolved] <- target_hits / L_hit[resolved]
+      p_val[capped] <- (c_final[capped] + 1) / (b_max + 1)
+      accepted <- !resolved & !capped
+      p_val[accepted] <- (c_final[accepted] + 1) / (g$b_used + 1)
+
+      summ <- if (is.null(v$weight)) {
+        NULL
+      } else {
+        .nles_null_summary(
+          nb$le_idx_b, g$ctx$w, robust_nles, min_perm_nles, min_nles_support
+        )
+      }
+      purrr::imap(g$keep, function(j, i) {
+        st <- g$stats[[j]]
+        set <- g$sets_m[[j]]
+        eff <- .nles_from_summary(st$le_idx, g$ctx$w, g$ctx$dir_sign, summ)
+        tibble::tibble(
+          pathway = names(g$sets_m)[j], direction = g$ctx$label, set_size = set$m,
+          cutoff_rank = st$cutoff, leading_edge_size = st$cutoff,
+          overlap = st$overlap, leading_edge_fraction = st$overlap / set$m,
+          neg_log10_mHG = -st$log_stat / log(10), mHG_stat = exp(st$log_stat),
+          p_value = p_val[i], n_perm_used = g$b_used,
+          n_exceed = c_final[i], resolution_limited = capped[i],
+          E_obs = eff$E_obs, NLES = eff$NLES, NLES_signed = eff$NLES_signed,
+          n_leading_edge = st$overlap, hits = paste(g$ctx$rg[st$le_idx], collapse = " ")
+        )
+      })
+    }
+    if (use_par) {
+      furrr::future_map(
+        groups, finalize_group,
+        .options = furrr::furrr_options(seed = TRUE)
+      )
+    } else {
+      lapply(groups, finalize_group)
+    }
+  }
+
+  results <- if (adaptive) {
+    run_adaptive()
+  } else if (use_par) {
     furrr::future_map2(
-      by_size, sizes, score_size,
+      by_size, sizes, score_size_fixed,
       .options = furrr::furrr_options(seed = TRUE)
     )
   } else {
-    purrr::map2(by_size, sizes, score_size)
+    purrr::map2(by_size, sizes, score_size_fixed)
   }
 
   out <- purrr::list_rbind(purrr::list_flatten(results))
