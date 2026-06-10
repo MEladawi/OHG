@@ -5,8 +5,9 @@
 #' [ohg_shrink_lfc()]. Works in signed space: any value whose magnitude exceeds the
 #' `p` quantile of `abs(x)` is clipped to `+cap` or `-cap`
 #' (`cap = quantile(abs(x), p)`), both tails symmetrically. It does **not** take
-#' `abs()` -- the sign is kept so the result can drive
-#' `rank_stat = clean_lfc * -log10(p)`; take `abs()` yourself for the weight. The
+#' `abs()` -- the sign is kept so the cleaned value stays a proper signed fold
+#' change (its sign gives the up/down direction); take `abs()` yourself for the
+#' weight that feeds `NLES`. The
 #' OHG core never winsorizes; this is a visible, opt-in step in your own script.
 #'
 #' @param x Numeric signed vector (e.g. log-fold-changes).

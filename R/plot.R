@@ -18,10 +18,10 @@
 #' genes <- paste0("g", 1:50)
 #' lfc <- rnorm(50)
 #' p <- runif(50)
-#' # same recipe as ohg_enrichment(): clean the LFC, rank by clean_lfc * -log10(p)
+#' # same recipe as ohg_enrichment(): rank by signed significance sign(lfc) * -log10(p)
 #' plot_ohg_leading_edge(
 #'   genes, genes[c(1, 2, 3, 20)],
-#'   rank_stat = ohg_winsorize(lfc) * -log10(p)
+#'   rank_stat = sign(lfc) * -log10(p)
 #' )
 #' }
 #'

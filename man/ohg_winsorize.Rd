@@ -23,8 +23,9 @@ fallback for cleaning a log-fold-change when no standard error is available for
 \code{\link[=ohg_shrink_lfc]{ohg_shrink_lfc()}}. Works in signed space: any value whose magnitude exceeds the
 \code{p} quantile of \code{abs(x)} is clipped to \code{+cap} or \code{-cap}
 (\code{cap = quantile(abs(x), p)}), both tails symmetrically. It does \strong{not} take
-\code{abs()} -- the sign is kept so the result can drive
-\code{rank_stat = clean_lfc * -log10(p)}; take \code{abs()} yourself for the weight. The
+\code{abs()} -- the sign is kept so the cleaned value stays a proper signed fold
+change (its sign gives the up/down direction); take \code{abs()} yourself for the
+weight that feeds \code{NLES}. The
 OHG core never winsorizes; this is a visible, opt-in step in your own script.
 }
 \examples{
