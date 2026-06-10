@@ -109,13 +109,15 @@ build_nulls <- function(ms, N, B, boundaries, n_cores = 1L, seed = NULL,
 # payloads are tiny integer vectors, so a worker ships them back cheaply. Internal.
 .adaptive_draw_increment <- function(obs_log_stats, m, N, boundaries, n_new,
                                      rng_state, c_prev, b_used_prev, seed,
-                                     target_hits, L = N, X = 1L) {
+                                     target_hits, L = N, X = 1L,
+                                     weight = NULL, robust = TRUE) {
   if (is.null(rng_state)) {
     set.seed(seed + m) # first draw: open the stream keyed to m
   } else {
     assign(".Random.seed", rng_state, envir = .GlobalEnv) # resume where we stopped
   }
-  lsb <- ohg_permutation_null(N, m, n_new, boundaries, L = L, X = X)$log_stat_b
+  nb <- ohg_permutation_null(N, m, n_new, boundaries, L = L, X = X)
+  lsb <- nb$log_stat_b
   new_state <- get(".Random.seed", envir = .GlobalEnv)
   delta_c <- integer(length(obs_log_stats))
   L_hit <- rep(NA_integer_, length(obs_log_stats))
@@ -125,7 +127,17 @@ build_nulls <- function(ms, N, B, boundaries, n_cores = 1L, seed = NULL,
     w <- which(c_prev[i] + cumsum(hits) >= target_hits)[1L]
     if (!is.na(w)) L_hit[i] <- as.integer(b_used_prev + w)
   }
-  list(delta_c = delta_c, L_hit = L_hit, rng_state = new_state)
+  # Group-level NLES null increment: center(abs(weight)[le_idx]) per fresh draw,
+  # via the single shared E_b definition. NULL weight -> no NLES, skip the work.
+  delta_E_b <- if (is.null(weight)) {
+    NULL
+  } else {
+    .eb_from_leidx(nb$le_idx_b, weight, robust)
+  }
+  list(
+    delta_c = delta_c, L_hit = L_hit, rng_state = new_state,
+    delta_E_b = delta_E_b
+  )
 }
 
 # One-sided Clopper-Pearson (Beta) LOWER bound on a pathway's exceedance rate given
