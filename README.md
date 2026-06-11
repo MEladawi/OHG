@@ -1,5 +1,7 @@
 # OHG: Ordered Hypergeometric Enrichment
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20628295.svg)](https://doi.org/10.5281/zenodo.20628295)
+
 OHG takes a ranked gene list from a differential-expression analysis and finds which pathways are concentrated among your top genes. For each pathway it tells you whether that concentration is real, which genes form the leading edge that drives it, and how strongly those genes are differentially expressed — without asking you to choose a significance cutoff first.
 
 It is built to sit alongside GSEA and over-representation analysis, not to replace them: the three ask different questions of the same ranked list, and where they agree you can trust the biology, where they differ you learn something about its shape.
@@ -94,7 +96,7 @@ Helpers: `read_gmt()`, `ohg_shrink_lfc()`, `ohg_winsorize()`, `plot_ohg_leading_
 
 The following illustrates how the two methods behave on a single contrast — it is a demonstration of their different sensitivities, not a benchmark, and the method's justification (below) does not rest on it. We ran OHG and GSEA on the same ranked list from a postmortem cortical case–control contrast, with `direction = "both"` so that up- and down-regulated ends were tested together in one call (figures below). Of the pathways tested, 23 were significant by OHG and 39 by GSEA, with **14 significant by both — agreeing on direction in every one**. Those shared calls span the contrast's main biology: an immune/inflammatory program lowered in the condition (antimicrobial humoral response, lymphocyte and cell chemotaxis), a synaptic program raised (regulation of membrane potential, trans-synaptic signaling), and a genome-maintenance/cell-cycle program lowered (DNA replication, double-strand break repair, chromosome segregation). Two methods built on different statistics agreeing on this directional, multi-program picture is the reassurance that it is real rather than an artifact of either one.
 
-On this dataset — 19,484 genes × 3,759 GO:BP gene sets (sizes 15–500), `n_perm = 2000` — the OHG run takes around 1.5 minutes on 8 cores.
+On this dataset — 19,484 genes × 3,759 GO:BP gene sets (sizes 15–500) — the OHG run takes around 1.5 minutes on 8 cores. The permutation budget is adaptive: a baseline of `n_perm = 2000` for pathways far from significance, escalating to roughly 150,000 for near-significant pathways so their p-values resolve precisely.
 
 ![Significant GO:BP terms (FDR < 0.05) by method — shared, OHG-only, and GSEA-only counts](man/figures/ohg_vs_gsea_overlap.png)
 
@@ -114,7 +116,7 @@ The two methods are sensitive to different *enrichment architectures*, and the d
 
 This is what *more specific* means concretely. Instead of a generic "immune response," OHG names **response to tumor necrosis factor** and **response to chemokine**; instead of a generic "synaptic signaling," it names **regulation of synaptic plasticity** and **GABA transport**. And across OHG's significant pathways the leading edge averages ~29% of the pathway, so each call points to the compact gene subset driving it rather than the whole annotation — the `hits` column lists exactly those genes.
 
-**GSEA, in turn, was more sensitive to broad programs spread thinly across many genes.** Its unique calls were dominated by one such program: about half (12 of 25) were cell-cycle and chromosome-machinery terms — mitotic nuclear division, sister chromatid segregation, organelle fission, centriole assembly — describing a single proliferation signal at many levels of granularity. OHG reported that program through its shared-core terms (DNA replication, chromosome segregation) without multiplying it into a dozen redundant children. (A broad cell-cycle signal in postmortem cortex can also track cell-type composition rather than biology — worth checking before interpretation.)
+**GSEA, in turn, was more sensitive to broad programs spread thinly across many genes** — its weighted running sum accumulates a diffuse, coordinated shift that OHG's top-of-list scan can miss. Its unique calls were dominated by one such program: about half (12 of 25) were cell-cycle and chromosome-machinery terms (mitotic nuclear division, sister chromatid segregation, organelle fission, centriole assembly), resolving a single proliferation signal at several levels of granularity. OHG captured the same program through its shared-core terms (DNA replication, chromosome segregation); whether you want GSEA's fine-grained breakdown or OHG's compact core depends on the question. (A broad cell-cycle signal in postmortem tissue can also reflect cell-type composition rather than regulation — a caveat worth checking for either method.)
 
 The practical takeaway: **run both.** Pathways called by both, in agreement, are the secure core. GSEA extends the picture toward broad, coordinated programs; OHG toward specific, concentrated ones — here neuroinflammatory (TNF, chemokine) and synaptic (plasticity, GABA) modules — and returns the leading-edge genes that carry each. The two are complementary, sensitive to different enrichment architectures, not competing.
 
@@ -308,8 +310,6 @@ One row per pathway (or pathway × direction), ordered by `p_value`:
 | `E_obs` | observed leading-edge magnitude (median absolute weight) |
 | `NLES`, `NLES_signed` | effect size, unsigned and direction-signed |
 | `hits` | leading-edge gene names |
-
-`NES_OHG` is a deprecated alias for `NLES`.
 
 ---
 

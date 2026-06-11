@@ -44,5 +44,6 @@ return an honest p-value, the exact leading-edge genes, and a separate effect si
 ## Performance
 
 A continuous metric has no ties, so the mHG kernel takes an O(*m*) fast path. A full
-run on 19,484 genes against 3,759 GO:BP gene sets (`n_perm = 2000`) completes in about
-1.5 minutes on 8 cores.
+run on 19,484 genes against 3,759 GO:BP gene sets completes in about 1.5 minutes on 8
+cores, with an adaptive permutation budget — a baseline of `n_perm = 2000`, escalating
+to roughly 150,000 for near-significant pathways so their p-values resolve precisely.

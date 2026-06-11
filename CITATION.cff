@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+message: "If you use OHG, please cite it as below."
+title: "OHG: Ordered Hypergeometric (Minimum-Hypergeometric) Enrichment"
+abstract: >-
+  Ordered / minimum-hypergeometric (mHG) enrichment test for one ranked gene list
+  against a collection of gene sets. Reports significance (a permutation-calibrated
+  p-value), localization (cutoff rank and leading-edge fraction), and magnitude (a
+  normalized leading-edge score) as three separate, never-pre-mixed axes.
+type: software
+authors:
+  - family-names: Eladawi
+    given-names: Mahmoud
+    email: eladawimahmoud@tutamail.com
+version: 0.1.0
+date-released: 2026-06-11
+doi: 10.5281/zenodo.20628295
+url: "https://github.com/MEladawi/OHG"
+repository-code: "https://github.com/MEladawi/OHG"
+license: MIT
+keywords:
+  - gene set enrichment
+  - pathway analysis
+  - minimum hypergeometric
+  - mHG
+  - bioinformatics
+  - R
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.20628295
+    description: "Concept DOI (resolves to all versions)"
+  - type: doi
+    value: 10.5281/zenodo.20628296
+    description: "Version DOI (v0.1.0)"
