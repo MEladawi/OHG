@@ -98,9 +98,9 @@ The following illustrates how the two methods behave on a single contrast — it
 
 On this dataset — 19,484 genes × 3,759 GO:BP gene sets (sizes 15–500) — the OHG run takes around 1.5 minutes on 8 cores. The permutation budget is adaptive: a baseline of `n_perm = 2000` for pathways far from significance, escalating to roughly 150,000 for near-significant pathways so their p-values resolve precisely.
 
-![Significant GO:BP terms (FDR < 0.05) by method — shared, OHG-only, and GSEA-only counts](man/figures/ohg_vs_gsea_overlap.png)
+<img src="man/figures/ohg_vs_gsea_overlap.png" alt="Significant GO:BP terms (FDR < 0.05) by method — shared, OHG-only, and GSEA-only counts" width="480">
 
-![−log10(FDR) for OHG vs GSEA across co-tested GO:BP terms, colored by agreement](man/figures/ohg_vs_gsea_scatter.png)
+<img src="man/figures/ohg_vs_gsea_scatter.png" alt="−log10(FDR) for OHG vs GSEA across co-tested GO:BP terms, colored by agreement" width="560">
 
 The two methods are sensitive to different *enrichment architectures*, and the divergence below maps onto that.
 
@@ -116,11 +116,11 @@ The two methods are sensitive to different *enrichment architectures*, and the d
 
 This is what *more specific* means concretely. Instead of a generic "immune response," OHG names **response to tumor necrosis factor** and **response to chemokine**; instead of a generic "synaptic signaling," it names **regulation of synaptic plasticity** and **GABA transport**. And across OHG's significant pathways the leading edge averages ~29% of the pathway, so each call points to the compact gene subset driving it rather than the whole annotation — the `hits` column lists exactly those genes.
 
-**GSEA, in turn, was more sensitive to broad programs spread thinly across many genes** — its weighted running sum accumulates a diffuse, coordinated shift that OHG's top-of-list scan can miss. Its unique calls were dominated by one such program: about half (12 of 25) were cell-cycle and chromosome-machinery terms (mitotic nuclear division, sister chromatid segregation, organelle fission, centriole assembly), resolving a single proliferation signal at several levels of granularity. OHG captured the same program through its shared-core terms (DNA replication, chromosome segregation); whether you want GSEA's fine-grained breakdown or OHG's compact core depends on the question. (A broad cell-cycle signal in postmortem tissue can also reflect cell-type composition rather than regulation — a caveat worth checking for either method.)
+**GSEA, in turn, was more sensitive to broad programs spread thinly across many genes.** Its unique calls were dominated by one such program: about half (12 of 25) were cell-cycle and chromosome-machinery terms — mitotic nuclear division, sister chromatid segregation, organelle fission, centriole assembly — describing a single proliferation signal at many levels of granularity. OHG reported that program through its shared-core terms (DNA replication, chromosome segregation) without multiplying it into a dozen redundant children. (A broad cell-cycle signal in postmortem cortex can also track cell-type composition rather than biology — worth checking before interpretation.)
 
 The practical takeaway: **run both.** Pathways called by both, in agreement, are the secure core. GSEA extends the picture toward broad, coordinated programs; OHG toward specific, concentrated ones — here neuroinflammatory (TNF, chemokine) and synaptic (plasticity, GABA) modules — and returns the leading-edge genes that carry each. The two are complementary, sensitive to different enrichment architectures, not competing.
 
-![Top 10 GO:BP terms per direction — OHG vs GSEA, ranked by −log10(FDR)](man/figures/ohg_vs_gsea_top10.png)
+<img src="man/figures/ohg_vs_gsea_top10.png" alt="Top 10 GO:BP terms per direction — OHG vs GSEA, ranked by −log10(FDR)" width="720">
 
 > **Scope.** These observations come from this single contrast and are illustrative, not a benchmark — the method's justification rests on its design (below), not on this example. Comparisons on three independent differential-expression datasets from published manuscripts are in progress for verification and will be added here.
 
@@ -138,7 +138,7 @@ When you have a differential-expression result, the two standard ways to ask "wh
 
 Over-representation analysis (ORA — Enrichr, DAVID, g:Profiler) first splits your genes into a significant set and the rest, using a cutoff such as FDR < 0.05. Two costs follow. The cutoff is arbitrary — FDR < 0.05 versus < 0.10, with or without a fold-change filter, gives you a different gene list and different enriched pathways. And inside the significant set the ranking is gone: a gene that barely cleared the cutoff counts the same as your strongest hit, and everything below the cutoff counts for nothing.
 
-GSEA keeps the ranking and is the right tool for many questions, but its enrichment score is a weighted shift across the whole list, so it is most sensitive to pathways carried by a few large-fold-change genes and can dilute a pathway whose signal is real but concentrated in a compact block near the top.
+GSEA keeps the ranking and is the right tool for many questions: its enrichment score is a weighted shift across the whole list, well suited to broad, coordinated, magnitude-driven signals. It simply asks a different question than OHG does — reading the whole list and weighting each gene by how far it moved, it measures overall displacement rather than whether a pathway's genes are specifically concentrated near the top.
 
 OHG keeps the ranking and removes the cutoff. It walks down your ranked list, tries every possible cutoff, scores each one with a hypergeometric test, and keeps the most enriched. The genes above that cutoff are the **leading edge** — the part of the pathway actually driving the signal. This is the minimum-hypergeometric (mHG) idea (Eden et al., 2007, 2009). Because it searched many cutoffs and kept the best, that raw score is not yet a p-value; OHG then calibrates it (below) so the result is honest and comparable across pathways.
 
@@ -240,7 +240,7 @@ To see why a pathway was called, plot its leading edge — the running mHG curve
 plot_ohg_leading_edge(res, pathway = "GOBP_RESPONSE_TO_TUMOR_NECROSIS_FACTOR")
 ```
 
-![OHG leading-edge curve for the top term — cumulative pathway hits along the ranking, with the optimal mHG cutoff marked (dashed)](man/figures/ohg_leading_edge_top.png)
+<img src="man/figures/ohg_leading_edge_top.png" alt="OHG leading-edge curve for the top term — cumulative pathway hits along the ranking, with the optimal mHG cutoff marked (dashed)" width="600">
 
 Use `leading_edge_fraction` to read a hit, not to rank it. A low fraction with a high `NLES` is a strong driver sub-module of a large pathway; a high fraction with a low `NLES` is broad, gentle involvement. It is what keeps "pathway X is enriched" from being over-read as the whole pathway when the signal is really a handful of its genes — a distinction the p-value alone can't make.
 

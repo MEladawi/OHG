@@ -1,3 +1,9 @@
+# OHG 0.1.1
+
+Documentation and packaging only — no change to the analysis or results. Adds a
+Zenodo DOI badge and `CITATION.cff`, clarifies the adaptive permutation budget,
+sizes the comparison figures, and refines the OHG-vs-GSEA framing.
+
 # OHG 0.1.0
 
 First release.

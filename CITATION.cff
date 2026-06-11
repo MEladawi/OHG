@@ -11,7 +11,7 @@ authors:
   - family-names: Eladawi
     given-names: Mahmoud
     email: eladawimahmoud@tutamail.com
-version: 0.1.0
+version: 0.1.1
 date-released: 2026-06-11
 doi: 10.5281/zenodo.20628295
 url: "https://github.com/MEladawi/OHG"
@@ -28,6 +28,3 @@ identifiers:
   - type: doi
     value: 10.5281/zenodo.20628295
     description: "Concept DOI (resolves to all versions)"
-  - type: doi
-    value: 10.5281/zenodo.20628296
-    description: "Version DOI (v0.1.0)"
