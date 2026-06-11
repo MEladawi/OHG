@@ -98,9 +98,9 @@ The following illustrates how the two methods behave on a single contrast — it
 
 On this dataset — 19,484 genes × 3,759 GO:BP gene sets (sizes 15–500) — the OHG run takes around 1.5 minutes on 8 cores. The permutation budget is adaptive: a baseline of `n_perm = 2000` for pathways far from significance, escalating to roughly 150,000 for near-significant pathways so their p-values resolve precisely.
 
-<img src="man/figures/ohg_vs_gsea_overlap.png" alt="Significant GO:BP terms (FDR < 0.05) by method — shared, OHG-only, and GSEA-only counts" width="480">
+<p align="center"><img src="man/figures/ohg_vs_gsea_overlap.png" alt="Significant GO:BP terms (FDR < 0.05) by method — shared, OHG-only, and GSEA-only counts" width="480"></p>
 
-<img src="man/figures/ohg_vs_gsea_scatter.png" alt="−log10(FDR) for OHG vs GSEA across co-tested GO:BP terms, colored by agreement" width="560">
+<p align="center"><img src="man/figures/ohg_vs_gsea_scatter.png" alt="−log10(FDR) for OHG vs GSEA across co-tested GO:BP terms, colored by agreement" width="560"></p>
 
 The two methods are sensitive to different *enrichment architectures*, and the divergence below maps onto that.
 
@@ -120,7 +120,7 @@ This is what *more specific* means concretely. Instead of a generic "immune resp
 
 The practical takeaway: **run both.** Pathways called by both, in agreement, are the secure core. GSEA extends the picture toward broad, coordinated programs; OHG toward specific, concentrated ones — here neuroinflammatory (TNF, chemokine) and synaptic (plasticity, GABA) modules — and returns the leading-edge genes that carry each. The two are complementary, sensitive to different enrichment architectures, not competing.
 
-<img src="man/figures/ohg_vs_gsea_top10.png" alt="Top 10 GO:BP terms per direction — OHG vs GSEA, ranked by −log10(FDR)" width="720">
+<p align="center"><img src="man/figures/ohg_vs_gsea_top10.png" alt="Top 10 GO:BP terms per direction — OHG vs GSEA, ranked by −log10(FDR)" width="720"></p>
 
 > **Scope.** These observations come from this single contrast and are illustrative, not a benchmark — the method's justification rests on its design (below), not on this example. Comparisons on three independent differential-expression datasets from published manuscripts are in progress for verification and will be added here.
 
@@ -138,7 +138,7 @@ When you have a differential-expression result, the two standard ways to ask "wh
 
 Over-representation analysis (ORA — Enrichr, DAVID, g:Profiler) first splits your genes into a significant set and the rest, using a cutoff such as FDR < 0.05. Two costs follow. The cutoff is arbitrary — FDR < 0.05 versus < 0.10, with or without a fold-change filter, gives you a different gene list and different enriched pathways. And inside the significant set the ranking is gone: a gene that barely cleared the cutoff counts the same as your strongest hit, and everything below the cutoff counts for nothing.
 
-GSEA keeps the ranking and is the right tool for many questions: its enrichment score is a running statistic that weights each gene by the magnitude of the ranking metric (the fgsea exponent, default 1), well suited to broad, coordinated shifts. It asks a different question than OHG — OHG uses the metric only to order genes and then asks, by count, whether a pathway's genes are concentrated in the top prefix. GSEA folds magnitude into that single score; OHG keeps it separate, reporting how strongly the leading-edge genes moved as its own axis (NLES), so significance and effect size never blur together.
+GSEA keeps the ranking and is the right tool for many questions: its enrichment score is a running statistic that weights genes by the magnitude of the ranking metric (controlled by the fgsea exponent, default = 1), making it particularly sensitive to coordinated shifts distributed across a pathway. OHG asks a different question. It uses the ranking metric only to order genes and then tests whether pathway members are unusually concentrated within the top prefix of the ranked list. Thus, GSEA combines rank position and ranking-metric magnitude within the enrichment statistic itself, whereas OHG separates pathway significance from biological magnitude by reporting statistical significance (FDR) alongside an independent summary of leading-edge effect size (NLES). This distinction allows significance and effect size to be interpreted as complementary, rather than interchangeable, aspects of pathway behavior.
 
 OHG keeps the ranking and removes the cutoff. It walks down your ranked list, tries every possible cutoff, scores each one with a hypergeometric test, and keeps the most enriched. The genes above that cutoff are the **leading edge** — the part of the pathway actually driving the signal. This is the minimum-hypergeometric (mHG) idea (Eden et al., 2007, 2009). Because it searched many cutoffs and kept the best, that raw score is not yet a p-value; OHG then calibrates it (below) so the result is honest and comparable across pathways.
 
@@ -240,7 +240,7 @@ To see why a pathway was called, plot its leading edge — the running mHG curve
 plot_ohg_leading_edge(res, pathway = "GOBP_RESPONSE_TO_TUMOR_NECROSIS_FACTOR")
 ```
 
-<img src="man/figures/ohg_leading_edge_top.png" alt="OHG leading-edge curve for the top term — cumulative pathway hits along the ranking, with the optimal mHG cutoff marked (dashed)" width="600">
+<p align="center"><img src="man/figures/ohg_leading_edge_top.png" alt="OHG leading-edge curve for the top term — cumulative pathway hits along the ranking, with the optimal mHG cutoff marked (dashed)" width="600"></p>
 
 Use `leading_edge_fraction` to read a hit, not to rank it. A low fraction with a high `NLES` is a strong driver sub-module of a large pathway; a high fraction with a low `NLES` is broad, gentle involvement. It is what keeps "pathway X is enriched" from being over-read as the whole pathway when the signal is really a handful of its genes — a distinction the p-value alone can't make.
 
@@ -324,6 +324,14 @@ Wagner F (2015). The XL-mHG test for enrichment: a technical report. *arXiv:1507
 Subramanian A, et al. (2005). Gene set enrichment analysis. *PNAS* 102(43):15545–15550.
 
 Besag J, Clifford P (1991). Sequential Monte Carlo p-values. *Biometrika* 78(2):301–304.
+
+## Citation
+
+If you use OHG, please cite it via its Zenodo archive:
+
+> Eladawi, M. (2026). *OHG: Ordered Hypergeometric (Minimum-Hypergeometric) Enrichment*. Zenodo. https://doi.org/10.5281/zenodo.20628295
+
+The DOI above always resolves to the latest version; each release also has its own version DOI on Zenodo. A machine-readable `CITATION.cff` is included in the repository.
 
 ## License
 
