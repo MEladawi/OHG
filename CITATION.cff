@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use OHG, please cite it as below."
-title: "OHG: Ordered Hypergeometric (Minimum-Hypergeometric) Enrichment"
+title: "Ordered Hypergeometric Pathways Enrichment R-package"
 abstract: >-
   Ordered / minimum-hypergeometric (mHG) enrichment test for one ranked gene list
   against a collection of gene sets. Reports significance (a permutation-calibrated

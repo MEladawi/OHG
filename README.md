@@ -329,7 +329,7 @@ Besag J, Clifford P (1991). Sequential Monte Carlo p-values. *Biometrika* 78(2):
 
 If you use OHG, please cite it via its Zenodo archive:
 
-> Eladawi, M. (2026). *OHG: Ordered Hypergeometric (Minimum-Hypergeometric) Enrichment*. Zenodo. https://doi.org/10.5281/zenodo.20628295
+> Mahmoud Eladawi. (2026). *Ordered Hypergeometric Pathways Enrichment R-package*. Zenodo. https://doi.org/10.5281/zenodo.20628295
 
 The DOI above always resolves to the latest version; each release also has its own version DOI on Zenodo. A machine-readable `CITATION.cff` is included in the repository.
 
