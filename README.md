@@ -1,6 +1,6 @@
 # OHG: Ordered Hypergeometric Pathway Enrichment
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20628295.svg)](https://doi.org/10.5281/zenodo.20628295)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.20628295-1682D4?logo=zenodo)](https://doi.org/10.5281/zenodo.20628295)
 
 OHG takes a ranked gene list from a differential-expression analysis and finds which pathways are concentrated among your top genes. For each pathway it tells you whether that concentration is real, which genes form the leading edge that drives it, and how strongly those genes are differentially expressed — without asking you to choose a significance cutoff first.
 
