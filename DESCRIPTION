@@ -2,7 +2,7 @@ Package: OHG
 Title: Ordered Hypergeometric Pathway Enrichment
 Version: 0.1.1
 Authors@R:
-    person("Mahmoud", "Eladawi", email = "eladawimahmoud@tutamail.com", role = c("aut", "cre"))
+    person("Mahmoud", "Eladawi", email = "eladawimahmoud@tutamail.com", role = c("aut", "cre"), comment = c(ORCID = "0000-0003-1383-834X"))
 Description: Ordered / minimum-hypergeometric (mHG) enrichment test for one ranked
     gene list against a collection of gene sets. Reports significance (a
     permutation-calibrated p-value), localization (cutoff rank and leading-edge

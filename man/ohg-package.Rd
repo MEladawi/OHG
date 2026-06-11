@@ -4,12 +4,12 @@
 \name{OHG-package}
 \alias{OHG}
 \alias{OHG-package}
-\title{OHG: Ordered Hypergeometric (Minimum-Hypergeometric) Enrichment}
+\title{OHG: Ordered Hypergeometric Pathway Enrichment}
 \description{
 Ordered / minimum-hypergeometric (mHG) enrichment test for one ranked gene list against a collection of gene sets. Reports significance (a permutation-calibrated p-value), localization (cutoff rank and leading-edge fraction), and magnitude (a normalized leading-edge score) as three separate, never-pre-mixed axes.
 }
 \author{
-\strong{Maintainer}: Mahmoud Eladawi \email{eladawimahmoud@tutamail.com}
+\strong{Maintainer}: Mahmoud Eladawi \email{eladawimahmoud@tutamail.com} (\href{https://orcid.org/0000-0003-1383-834X}{ORCID})
 
 }
 \keyword{internal}
