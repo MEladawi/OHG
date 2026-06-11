@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use OHG, please cite it as below."
-title: "Ordered Hypergeometric Pathways Enrichment R-package"
+title: "OHG: Ordered Hypergeometric Pathway Enrichment"
 abstract: >-
   Ordered / minimum-hypergeometric (mHG) enrichment test for one ranked gene list
   against a collection of gene sets. Reports significance (a permutation-calibrated
@@ -11,8 +11,6 @@ authors:
   - family-names: Eladawi
     given-names: Mahmoud
     email: eladawimahmoud@tutamail.com
-version: 0.1.1
-date-released: 2026-06-11
 doi: 10.5281/zenodo.20628295
 url: "https://github.com/MEladawi/OHG"
 repository-code: "https://github.com/MEladawi/OHG"
