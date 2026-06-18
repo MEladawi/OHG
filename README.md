@@ -26,9 +26,8 @@ Start from a differential-expression table — a gene identifier, a log fold cha
 ```r
 library(OHG)
 
-# 1. Rank the genes, most significant first, by signed significance.
+# 1. Build the ranking metric: signed significance. OHG sorts by it for you.
 de$rank_stat <- sign(de$log2FC) * -log10(de$pvalue)
-de <- de[order(de$rank_stat, decreasing = TRUE), ]
 
 # 2. Run OHG.
 res <- ohg_enrichment(
@@ -84,7 +83,7 @@ Significance (`p_adjust`) and effect size (`NLES`) are kept apart on purpose: a 
 - **Use the absolute log fold change** as the effect weight, regularized first — `ohg_shrink_lfc(log2FC, se)` when you have a standard error, otherwise `ohg_winsorize(log2FC)` — so noisy low-count genes don't dominate.
 - **Pathways** can be a named list, a `.gmt` file (MSigDB, Enrichr, g:Profiler), or a `GSEABase::GeneSetCollection`.
 - **Sharper or broader leading edges:** lower or raise `max_cutoff_frac` (default `0.25`).
-- **Run in parallel:** set `n_cores > 1` (and `future::plan("multicore")` on Linux/HPC).
+- **Run in parallel:** just set `n_cores > 1` (with `future` + `furrr` installed) — OHG sets up and tears down the parallel backend itself.
 
 Helpers: `read_gmt()`, `ohg_shrink_lfc()`, `ohg_winsorize()`, `plot_ohg_leading_edge()`. See each function's help page (e.g. `?ohg_enrichment`) for the full argument and output reference.
 
@@ -237,7 +236,11 @@ res |>
 To see why a pathway was called, plot its leading edge — the running mHG curve down the ranking, with the chosen cutoff marked. A top-heavy curve is the visual signature of a concentrated signal:
 
 ```r
-plot_ohg_leading_edge(res, pathway = "GOBP_RESPONSE_TO_TUMOR_NECROSIS_FACTOR")
+plot_ohg_leading_edge(
+  de$gene,
+  pathways[["GOBP_RESPONSE_TO_TUMOR_NECROSIS_FACTOR"]],
+  rank_stat = sign(de$log2FC) * -log10(de$pvalue)
+)
 ```
 
 <p align="center"><img src="man/figures/ohg_leading_edge_top.png" alt="OHG leading-edge curve for the top term — cumulative pathway hits along the ranking, with the optimal mHG cutoff marked (dashed)" width="600"></p>
@@ -250,7 +253,7 @@ Use `leading_edge_fraction` to read a hit, not to rank it. A low fraction with a
 
 **When `NLES` is `NA`.** Sizing an effect needs enough spread in the shuffled background; for small or degenerate pathways OHG returns `NLES = NA` with a warning but keeps the pathway, with its p-value intact — "enriched, but too small to size the effect reliably."
 
-**Big jobs.** Set `n_cores > 1` to shuffle in parallel. On Linux/HPC, `future::plan("multicore")` lets the workers share the large vectors instead of copying them; OHG uses whatever backend you set and never sets one itself. Results are identical across core counts for a fixed `seed`.
+**Big jobs.** Set `n_cores > 1` to shuffle in parallel (you need `future` and `furrr` installed). OHG owns the parallel backend itself: it picks a forking `multicore` plan on Linux/macOS — where workers share the large vectors via copy-on-write instead of copying them — and falls back to `multisession` where forking isn't available (e.g. Windows), then restores whatever plan you had on exit. You don't call `future::plan()` yourself; just pass `n_cores`. Results are identical across core counts for a fixed `seed`.
 
 ```r
 res <- ohg_enrichment(de$gene, pathways, n_perm = 5000L, seed = 1, n_cores = 8L)
@@ -264,9 +267,9 @@ res <- ohg_enrichment(de$gene, pathways, n_perm = 5000L, seed = 1, n_cores = 8L)
 
 | Input | Type | Notes |
 |---|---|---|
-| `ranked_genes` | character vector, ordered | Unique gene IDs, most significant first; this list is the background. |
+| `ranked_genes` | character vector | Unique gene IDs; this list is the background. When `rank_stat` is given OHG sorts by it, so the order you pass doesn't matter; with `rank_stat = NULL` the given order is the ranking (most significant first). |
 | `gene_sets` | named list, `.gmt` path, or `GeneSetCollection` | Each pathway is intersected with `ranked_genes`, so `set_size` counts only genes present in your list. |
-| `rank_stat` | numeric, aligned to `ranked_genes` | Non-increasing; sets ties and the inferred direction. Optional. |
+| `rank_stat` | numeric, aligned to `ranked_genes` | Values OHG orders the genes by (sorted descending for you); its sign sets ties and the inferred direction. Optional. |
 | `weight` | numeric, aligned, finite | Per-gene effect magnitude for `NLES`; the absolute value is used. Optional. |
 
 ## Arguments of `ohg_enrichment()`
@@ -281,13 +284,15 @@ res <- ohg_enrichment(de$gene, pathways, n_perm = 5000L, seed = 1, n_cores = 8L)
 | `min_hits` | `1` | Minimum pathway genes in the leading edge before a cutoff counts (the `X` restriction). |
 | `p_adjust_method` | `"BH"` | Multiple-testing correction; any method in `stats::p.adjust.methods`. |
 | `n_perm` | `2000` | Baseline shuffles; promising pathways are shuffled further as needed. |
-| `n_perm_max` | (automatic) | Cap on shuffles per pathway. |
+| `target_hits` | `10` | Exceedances a pathway must reach before its adaptive p-value resolves as `h / L`. |
+| `n_perm_max` | (automatic) | Cap on shuffles per pathway; defaults to `max(1e5, ceil(n_tests / alpha))`. |
+| `alpha` | `0.05` | Significance level; sets the default `n_perm_max` and the cap-limited warning threshold. |
 | `min_set_size` | `3` | Minimum pathway size to include; does not gate `NLES`. |
 | `min_perm_nles` | `1000` | Minimum shuffles before `NLES` is reported. |
 | `min_nles_support` | `10` | Minimum distinct background magnitudes before `NLES` is reported. |
 | `robust_nles` | `TRUE` | `NLES` uses median/MAD (`TRUE`) or mean/SD (`FALSE`). |
 | `collapse_both` | `FALSE` | With `"both"`, keep the stronger direction per pathway (with a factor-two penalty). |
-| `method` | `"permutation"` | Calibration method. |
+| `method` | `"adaptive"` | Calibration: `"adaptive"` (Besag–Clifford sequential, removes the `1/(n_perm+1)` floor) or `"permutation"` (fixed `n_perm`). |
 | `seed` | `NULL` | Reproducibility; your RNG state is restored afterward. |
 | `n_cores` | `1` | Parallel workers; identical results across core counts for a fixed seed. |
 
