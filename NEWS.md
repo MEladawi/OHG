@@ -1,3 +1,31 @@
+# OHG 1.0.0
+
+First stable release. The public API and the result schema are now stable.
+
+## Bug fixes
+
+* `NLES` is now reported under the default `max_cutoff_frac = 0.25`. The leading-edge
+  magnitude null was being poisoned by permutation draws whose hits all fell below the
+  cutoff cap `L`: those draws have no leading edge, but they were folded into the null
+  as `NA`, which silently gated `NLES` to `NA` for every pathway — even with a clean,
+  well-spread `weight` — and emitted a warning that wrongly blamed the weight vector.
+  The null now conditions on a non-empty leading edge, the same event the observed
+  score conditions on, so `NLES` is reported whenever the null is genuinely
+  informative. The stability gate still returns `NA` only when there are truly too few
+  usable permutations or the null spread is near zero.
+* The caller's global random-number state is now restored on exit even when
+  `seed = NULL` (a `seed = NULL` run could previously leave `.Random.seed` altered).
+
+## Breaking changes
+
+* Removed three result columns that were exact duplicates of others:
+  `leading_edge_size` (identical to `cutoff_rank`), `n_leading_edge` (identical to
+  `overlap`), and `NES_OHG` (identical to `NLES`). Use the canonical columns.
+
+## Documentation
+
+* `ohg_enrichment()` now documents every column of the returned tibble.
+
 # OHG 0.1.1
 
 Documentation and packaging only — no change to the analysis or results. Adds a
