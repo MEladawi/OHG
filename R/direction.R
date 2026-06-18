@@ -17,6 +17,12 @@
 #' @export
 tie_boundaries <- function(rank_stat, n = length(rank_stat)) {
   if (is.null(rank_stat)) {
+    # length(NULL) == 0, so the default n would silently yield integer(0). Require
+    # an explicit n: the caller alone knows the list length when no rank_stat is
+    # given to measure it from.
+    if (missing(n)) {
+      stop("`n` is required when `rank_stat` is NULL.", call. = FALSE)
+    }
     return(seq_len(n))
   }
   n <- length(rank_stat)

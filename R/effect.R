@@ -3,8 +3,11 @@
 #' Standardizes the observed leading-edge magnitude against the permutation null
 #' of leading-edge magnitudes for the same set size. The magnitude axis is always
 #' `abs(weight)`; the sign of `weight` is never read (direction comes from
-#' `dir_sign`). The column -- not the pathway -- is gated to `NA` when the null
-#' spread is degenerate or the null is too thin to standardize reliably.
+#' `dir_sign`). The null is conditioned on a non-empty leading edge: permutation
+#' draws whose hits all fall below the cutoff cap have no leading-edge magnitude
+#' and are excluded, matching the event the observed statistic conditions on. The
+#' column -- not the pathway -- is gated to `NA` when the null spread is degenerate
+#' or there are too few non-empty draws to standardize reliably.
 #'
 #' @param le_obs Integer positions of the observed leading-edge hits.
 #' @param weight Numeric per-gene magnitude aligned to the ranked list, or `NULL`.
@@ -41,6 +44,13 @@ compute_effect <- function(le_obs, weight, le_idx_b, dir_sign, robust,
 .eb_from_leidx <- function(le_idx_b, weight, robust) {
   w <- abs(weight)
   center <- if (robust) stats::median else mean
+  # A null draw whose hits all fall below the cutoff cap L has no top-L leading
+  # edge (le_idx = integer(0)) and therefore no leading-edge magnitude. Drop it
+  # so the null is the distribution of leading-edge magnitude GIVEN a non-empty
+  # leading edge -- the same event the observed statistic conditions on. Coercing
+  # an empty draw to center(numeric(0)) = NA instead would poison E_b with NAs,
+  # collapsing the spread to NA and silently gating NLES off for every pathway.
+  le_idx_b <- le_idx_b[lengths(le_idx_b) > 0L]
   vapply(le_idx_b, function(idx) center(w[idx]), numeric(1))
 }
 
@@ -49,8 +59,10 @@ compute_effect <- function(le_obs, weight, le_idx_b, dir_sign, robust,
 # on (E_b, robust, gates) -- never on the observed pathway -- so every pathway
 # of a given size+direction shares it. Splitting this out lets the adaptive
 # engine feed an E_b accumulated across rounds (no redraw) while the fixed-B
-# path feeds an E_b built fresh from le_idx_b. The B-gate is written against
-# length(E_b) directly, so it stays correct under any later
+# path feeds an E_b built fresh from le_idx_b. E_b holds one entry per null draw
+# WITH a non-empty leading edge (empty draws are dropped upstream in
+# .eb_from_leidx), so B = length(E_b) counts the informative draws and the B-gate
+# fires precisely when too few of them survive. It stays correct under any later
 # n_perm/min_perm_nles default change. Internal kernel helper (cf. .mhg_core).
 .nles_summary_from_Eb <- function(E_b, robust, min_perm_nles, min_nles_support) {
   center <- if (robust) stats::median else mean
@@ -75,8 +87,9 @@ compute_effect <- function(le_obs, weight, le_idx_b, dir_sign, robust,
     } else if (B < min_perm_nles) {
       sprintf(
         paste0(
-          "NLES skipped: only %d permutation(s) available (< min_perm_nles = %d), ",
-          "too few to size the effect reliably. Increase `n_perm`."
+          "NLES skipped: only %d permutation(s) with a non-empty leading edge ",
+          "(< min_perm_nles = %d), too few to size the effect reliably. Increase ",
+          "`n_perm`."
         ),
         B, min_perm_nles
       )

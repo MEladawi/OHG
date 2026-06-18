@@ -30,20 +30,21 @@ test_that("changing method changes p_adjust; pooled once", {
   expect_true(all(res_bonf$p_adjust_method == "bonferroni"))
 })
 
-test_that("schema columns present; overlap>=1; NES_OHG alias == NLES", {
+test_that("schema columns present; overlap>=1; no duplicate columns", {
   d <- toy()
   res <- ohg_enrichment_quiet(d$ranked, d$sets,
     weight = rev(seq_along(d$ranked)),
     n_perm = 1200L, seed = 1
   )
   needed <- c(
-    "pathway", "set_size", "cutoff_rank", "leading_edge_size", "overlap",
+    "pathway", "set_size", "cutoff_rank", "overlap",
     "leading_edge_fraction", "neg_log10_mHG", "mHG_stat", "p_value",
     "p_adjust", "p_adjust_method", "E_obs", "NLES", "NLES_signed",
-    "n_leading_edge", "hits"
+    "hits"
   )
   expect_true(all(needed %in% names(res)))
   expect_true(all(res$overlap >= 1L))
-  expect_equal(res$NES_OHG, res$NLES)
   expect_equal(res$leading_edge_fraction, res$overlap / res$set_size)
+  # the removed duplicate columns must be gone
+  expect_false(any(c("leading_edge_size", "n_leading_edge", "NES_OHG") %in% names(res)))
 })

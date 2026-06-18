@@ -36,8 +36,11 @@ A list with \code{E_obs}, \code{NLES}, and \code{NLES_signed}.
 Standardizes the observed leading-edge magnitude against the permutation null
 of leading-edge magnitudes for the same set size. The magnitude axis is always
 \code{abs(weight)}; the sign of \code{weight} is never read (direction comes from
-\code{dir_sign}). The column -- not the pathway -- is gated to \code{NA} when the null
-spread is degenerate or the null is too thin to standardize reliably.
+\code{dir_sign}). The null is conditioned on a non-empty leading edge: permutation
+draws whose hits all fall below the cutoff cap have no leading-edge magnitude
+and are excluded, matching the event the observed statistic conditions on. The
+column -- not the pathway -- is gated to \code{NA} when the null spread is degenerate
+or there are too few non-empty draws to standardize reliably.
 }
 \examples{
 null <- ohg_permutation_null(N = 100L, m = 8L, B = 1500L)

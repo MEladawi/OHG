@@ -59,9 +59,40 @@
 #'   multisession) and restores the caller's plan on exit; just pass `n_cores`.
 #'
 #' @return A tibble, one row per `(pathway[, direction])`, sorted by `p_value`.
-#'   Resampling diagnostics `n_perm_used` (draws spent on this size), `n_exceed`
-#'   (exceedance count), and `resolution_limited` (`TRUE` when the cap was hit
-#'   before resolving, so `p_value` is a conservative bound) are included.
+#'   The three reported axes are kept separate and never pre-mixed: significance
+#'   (`p_value`/`p_adjust`), localization (`cutoff_rank`/`leading_edge_fraction`),
+#'   and magnitude (`NLES`); the package emits no composite ranking column. The
+#'   resolved cutoff restriction is recorded as `attr(x, "L_used")` (largest
+#'   cutoff rank reached) and `attr(x, "X_used")` (minimum leading-edge hits).
+#'   Columns:
+#'   \describe{
+#'     \item{`pathway`}{Gene-set name.}
+#'     \item{`direction`}{`"up"` or `"down"`; present only when
+#'       `direction = "both"` (a single-direction run drops this column).}
+#'     \item{`set_size`}{Pathway genes present in the ranked list (`m = |T ∩ U|`).}
+#'     \item{`cutoff_rank`}{Rank of the mHG-optimal cutoff (the leading-edge depth);
+#'       never exceeds `L`.}
+#'     \item{`overlap`}{Pathway genes at or above `cutoff_rank` (leading-edge size).}
+#'     \item{`leading_edge_fraction`}{`overlap / set_size` -- the fraction of the
+#'       set captured in the leading edge (localization).}
+#'     \item{`neg_log10_mHG`}{`-log10` of the mHG statistic (larger = sharper).}
+#'     \item{`mHG_stat`}{The raw mHG statistic (a minimum tail probability, not a
+#'       p-value).}
+#'     \item{`p_value`}{Permutation-calibrated p-value (significance).}
+#'     \item{`p_adjust`}{Multiplicity-adjusted p-value.}
+#'     \item{`p_adjust_method`}{The `stats::p.adjust` method used.}
+#'     \item{`n_perm_used`}{Permutation draws spent on this set size.}
+#'     \item{`n_exceed`}{Null draws at least as enriched as the observed statistic.}
+#'     \item{`resolution_limited`}{`TRUE` when the permutation cap was hit before
+#'       resolving, so `p_value` is a conservative lower bound.}
+#'     \item{`E_obs`}{Observed leading-edge magnitude (center of `abs(weight)` over
+#'       the leading-edge genes); `NA` when `weight` is `NULL`.}
+#'     \item{`NLES`}{Normalized leading-edge score: `E_obs` standardized against the
+#'       permutation null of leading-edge magnitudes (magnitude axis). `NA` when
+#'       `weight` is `NULL` or the null is too degenerate/thin to standardize.}
+#'     \item{`NLES_signed`}{`NLES` multiplied by the run's direction sign.}
+#'     \item{`hits`}{Space-separated leading-edge gene names.}
+#'   }
 #'
 #' @examples
 #' # Minimal: a fully-ordered list, no rank_stat/weight.
@@ -135,23 +166,31 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
     as.integer(n_perm_max)
   }
 
+  # Always restore the caller's global RNG state, even when seed = NULL: the
+  # adaptive path draws a base seed and the per-size workers call set.seed(),
+  # which clobbers .GlobalEnv$.Random.seed regardless of whether the user set a
+  # seed. Save it on entry and restore (or remove, if we created it) on exit. The
+  # RNGkind switch to L'Ecuyer-CMRG -- used only for reproducible per-size streams
+  # when a seed is given -- stays conditional and is restored first.
+  had_seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+  old_seed <- if (had_seed) get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+  on.exit(
+    {
+      if (had_seed) {
+        assign(".Random.seed", old_seed, envir = .GlobalEnv)
+      } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+        rm(".Random.seed", envir = .GlobalEnv)
+      }
+    },
+    add = TRUE
+  )
   if (!is.null(seed)) {
-    # Use L'Ecuyer-CMRG for reproducible per-size streams, but leave the caller's
-    # global RNG kind and seed exactly as we found them once we return.
-    had_seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
-    old_seed <- if (had_seed) get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
     old_kind <- RNGkind("L'Ecuyer-CMRG")
-    on.exit(
-      {
-        do.call(RNGkind, as.list(old_kind))
-        if (had_seed) {
-          assign(".Random.seed", old_seed, envir = .GlobalEnv)
-        } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
-          rm(".Random.seed", envir = .GlobalEnv)
-        }
-      },
-      add = TRUE
-    )
+    # Restore the kind AFTER the seed restore above. on.exit runs in reverse of
+    # registration when after = FALSE; registering this last (add = TRUE keeps
+    # the seed handler) and with after = FALSE makes the kind reset run first,
+    # then the seed assignment, so the caller sees both as they were.
+    on.exit(do.call(RNGkind, as.list(old_kind)), add = TRUE, after = FALSE)
   }
 
   # Parallel backend: the package owns plan setup so callers only pass n_cores.
@@ -244,13 +283,13 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
         eff <- .nles_from_summary(st$le_idx, ctx$w, ctx$dir_sign, summ)
         tibble::tibble(
           pathway = names(sets_m)[j], direction = ctx$label, set_size = set$m,
-          cutoff_rank = st$cutoff, leading_edge_size = st$cutoff,
+          cutoff_rank = st$cutoff,
           overlap = st$overlap, leading_edge_fraction = st$overlap / set$m,
           neg_log10_mHG = -st$log_stat / log(10), mHG_stat = exp(st$log_stat),
           p_value = (1 + c_exc[i]) / (1 + n_perm), n_perm_used = n_perm,
           n_exceed = c_exc[i], resolution_limited = FALSE,
           E_obs = eff$E_obs, NLES = eff$NLES, NLES_signed = eff$NLES_signed,
-          n_leading_edge = st$overlap, hits = paste(ctx$rg[st$le_idx], collapse = " ")
+          hits = paste(ctx$rg[st$le_idx], collapse = " ")
         )
       }))
     }
@@ -386,13 +425,13 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
         eff <- .nles_from_summary(st$le_idx, g$ctx$w, g$ctx$dir_sign, summ)
         tibble::tibble(
           pathway = names(g$sets_m)[j], direction = g$ctx$label, set_size = set$m,
-          cutoff_rank = st$cutoff, leading_edge_size = st$cutoff,
+          cutoff_rank = st$cutoff,
           overlap = st$overlap, leading_edge_fraction = st$overlap / set$m,
           neg_log10_mHG = -st$log_stat / log(10), mHG_stat = exp(st$log_stat),
           p_value = p_val[i], n_perm_used = g$b_used,
           n_exceed = g$c[i], resolution_limited = capped[i],
           E_obs = eff$E_obs, NLES = eff$NLES, NLES_signed = eff$NLES_signed,
-          n_leading_edge = st$overlap, hits = paste(g$ctx$rg[st$le_idx], collapse = " ")
+          hits = paste(g$ctx$rg[st$le_idx], collapse = " ")
         )
       })
     }
@@ -430,7 +469,6 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
 
   out$p_adjust <- stats::p.adjust(out$p_value, method = p_adjust_method)
   out$p_adjust_method <- p_adjust_method
-  out$NES_OHG <- out$NLES
 
   # Honesty flag: a pathway capped at b_max without resolving reports a conservative
   # lower-bound p (it can only be called LESS significant than truth). Warn once if
@@ -448,11 +486,10 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
   }
 
   col_order <- c(
-    "pathway", "direction", "set_size", "cutoff_rank", "leading_edge_size",
+    "pathway", "direction", "set_size", "cutoff_rank",
     "overlap", "leading_edge_fraction", "neg_log10_mHG", "mHG_stat",
     "p_value", "p_adjust", "p_adjust_method", "n_perm_used", "n_exceed",
-    "resolution_limited", "E_obs", "NLES",
-    "NLES_signed", "NES_OHG", "n_leading_edge", "hits"
+    "resolution_limited", "E_obs", "NLES", "NLES_signed", "hits"
   )
   if (dir == "up") {
     out$direction <- NULL

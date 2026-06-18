@@ -305,8 +305,8 @@ One row per pathway (or pathway × direction), ordered by `p_value`:
 | `pathway` | pathway name |
 | `direction` | `"up"`/`"down"`, when reported |
 | `set_size` | pathway genes present in your list |
-| `cutoff_rank`, `leading_edge_size` | rank of the chosen cutoff |
-| `overlap`, `n_leading_edge` | pathway genes in the leading edge |
+| `cutoff_rank` | rank of the chosen cutoff |
+| `overlap` | pathway genes in the leading edge |
 | `leading_edge_fraction` | `overlap / set_size` (coverage) |
 | `neg_log10_mHG`, `mHG_stat` | the raw mHG score (not a p-value) |
 | `p_value`, `p_adjust` | calibrated significance, raw and corrected |

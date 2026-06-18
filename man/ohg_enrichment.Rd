@@ -99,9 +99,40 @@ multisession) and restores the caller's plan on exit; just pass \code{n_cores}.}
 }
 \value{
 A tibble, one row per \code{(pathway[, direction])}, sorted by \code{p_value}.
-Resampling diagnostics \code{n_perm_used} (draws spent on this size), \code{n_exceed}
-(exceedance count), and \code{resolution_limited} (\code{TRUE} when the cap was hit
-before resolving, so \code{p_value} is a conservative bound) are included.
+The three reported axes are kept separate and never pre-mixed: significance
+(\code{p_value}/\code{p_adjust}), localization (\code{cutoff_rank}/\code{leading_edge_fraction}),
+and magnitude (\code{NLES}); the package emits no composite ranking column. The
+resolved cutoff restriction is recorded as \code{attr(x, "L_used")} (largest
+cutoff rank reached) and \code{attr(x, "X_used")} (minimum leading-edge hits).
+Columns:
+\describe{
+\item{\code{pathway}}{Gene-set name.}
+\item{\code{direction}}{\code{"up"} or \code{"down"}; present only when
+\code{direction = "both"} (a single-direction run drops this column).}
+\item{\code{set_size}}{Pathway genes present in the ranked list (\verb{m = |T ∩ U|}).}
+\item{\code{cutoff_rank}}{Rank of the mHG-optimal cutoff (the leading-edge depth);
+never exceeds \code{L}.}
+\item{\code{overlap}}{Pathway genes at or above \code{cutoff_rank} (leading-edge size).}
+\item{\code{leading_edge_fraction}}{\code{overlap / set_size} -- the fraction of the
+set captured in the leading edge (localization).}
+\item{\code{neg_log10_mHG}}{\code{-log10} of the mHG statistic (larger = sharper).}
+\item{\code{mHG_stat}}{The raw mHG statistic (a minimum tail probability, not a
+p-value).}
+\item{\code{p_value}}{Permutation-calibrated p-value (significance).}
+\item{\code{p_adjust}}{Multiplicity-adjusted p-value.}
+\item{\code{p_adjust_method}}{The \code{stats::p.adjust} method used.}
+\item{\code{n_perm_used}}{Permutation draws spent on this set size.}
+\item{\code{n_exceed}}{Null draws at least as enriched as the observed statistic.}
+\item{\code{resolution_limited}}{\code{TRUE} when the permutation cap was hit before
+resolving, so \code{p_value} is a conservative lower bound.}
+\item{\code{E_obs}}{Observed leading-edge magnitude (center of \code{abs(weight)} over
+the leading-edge genes); \code{NA} when \code{weight} is \code{NULL}.}
+\item{\code{NLES}}{Normalized leading-edge score: \code{E_obs} standardized against the
+permutation null of leading-edge magnitudes (magnitude axis). \code{NA} when
+\code{weight} is \code{NULL} or the null is too degenerate/thin to standardize.}
+\item{\code{NLES_signed}}{\code{NLES} multiplied by the run's direction sign.}
+\item{\code{hits}}{Space-separated leading-edge gene names.}
+}
 }
 \description{
 Runs the ordered / minimum-hypergeometric enrichment test for one ranked gene
