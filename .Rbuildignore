@@ -1,0 +1,7 @@
+^LICENSE\.md$
+^CITATION\.cff$
+^\.gitattributes$
+^doc$
+^example$
+^\.tool-versions$
+\.DS_Store$
