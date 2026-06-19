@@ -77,14 +77,10 @@ compute_effect <- function(le_obs, weight, le_idx_b, dir_sign, robust,
   gated <- B < min_perm_nles || degenerate_spread ||
     n_distinct < min_nles_support
   if (gated) {
-    msg <- if (degenerate_spread) {
-      paste0(
-        "NLES skipped: the permutation null has near-zero spread (mad(E_b) ~= 0). ",
-        "This usually means the `weight` vector has a high density of identical or ",
-        "exact-zero values, so random leading edges yield near-constant median ",
-        "magnitudes."
-      )
-    } else if (B < min_perm_nles) {
+    # Check the count gate before the spread gate: when too few non-empty draws
+    # survive, B (and an all-empty E_b) drives spread to NA, which would otherwise
+    # mis-attribute the cause to the weight vector. Report the true cause first.
+    msg <- if (B < min_perm_nles) {
       sprintf(
         paste0(
           "NLES skipped: only %d permutation(s) with a non-empty leading edge ",
@@ -92,6 +88,13 @@ compute_effect <- function(le_obs, weight, le_idx_b, dir_sign, robust,
           "`n_perm`."
         ),
         B, min_perm_nles
+      )
+    } else if (degenerate_spread) {
+      paste0(
+        "NLES skipped: the permutation null has near-zero spread (mad(E_b) ~= 0). ",
+        "This usually means the `weight` vector has a high density of identical or ",
+        "exact-zero values, so random leading edges yield near-constant median ",
+        "magnitudes."
       )
     } else {
       sprintf(

@@ -109,7 +109,7 @@ Columns:
 \item{\code{pathway}}{Gene-set name.}
 \item{\code{direction}}{\code{"up"} or \code{"down"}; present only when
 \code{direction = "both"} (a single-direction run drops this column).}
-\item{\code{set_size}}{Pathway genes present in the ranked list (\verb{m = |T ∩ U|}).}
+\item{\code{set_size}}{Pathway genes present in the ranked list (\verb{m = |T intersect U|}).}
 \item{\code{cutoff_rank}}{Rank of the mHG-optimal cutoff (the leading-edge depth);
 never exceeds \code{L}.}
 \item{\code{overlap}}{Pathway genes at or above \code{cutoff_rank} (leading-edge size).}

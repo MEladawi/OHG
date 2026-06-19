@@ -21,7 +21,8 @@ A list with \code{kept} (named list of \code{list(genes, m)}) and \code{dropped}
 }
 \description{
 Computes \verb{T_eff = unique(T) intersect U} and \verb{m = |T_eff|} for each set, then
-drops sets with \code{m < min_set_size} or \code{m > N}. \code{min_set_size} controls
-significance inclusion only; it never gates the NLES column.
+drops sets with \code{m < min_set_size} (\code{m} cannot exceed \code{N}: \code{T_eff} is an
+intersection with the universe). \code{min_set_size} controls significance inclusion
+only; it never gates the NLES column.
 }
 \keyword{internal}

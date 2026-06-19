@@ -69,7 +69,7 @@
 #'     \item{`pathway`}{Gene-set name.}
 #'     \item{`direction`}{`"up"` or `"down"`; present only when
 #'       `direction = "both"` (a single-direction run drops this column).}
-#'     \item{`set_size`}{Pathway genes present in the ranked list (`m = |T ∩ U|`).}
+#'     \item{`set_size`}{Pathway genes present in the ranked list (`m = |T intersect U|`).}
 #'     \item{`cutoff_rank`}{Rank of the mHG-optimal cutoff (the leading-edge depth);
 #'       never exceeds `L`.}
 #'     \item{`overlap`}{Pathway genes at or above `cutoff_rank` (leading-edge size).}
@@ -130,6 +130,29 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
   }
   adaptive <- method == "adaptive"
 
+  # Fail loudly on out-of-range control knobs rather than letting them produce a
+  # silent wrong p-value (e.g. target_hits = 0 -> p = 0) or an NA budget (e.g.
+  # alpha = 0 -> b_max = NA) deep inside the engine. Each count is a single integer
+  # >= 1; alpha is a probability in (0, 1).
+  counts <- list(
+    n_perm = n_perm, target_hits = target_hits, min_set_size = min_set_size,
+    min_perm_nles = min_perm_nles, min_nles_support = min_nles_support,
+    n_cores = n_cores
+  )
+  for (nm in names(counts)) {
+    x <- counts[[nm]]
+    if (length(x) != 1L || !is.finite(x) || x < 1 || x != round(x)) {
+      stop(sprintf("`%s` must be a single integer >= 1.", nm), call. = FALSE)
+    }
+  }
+  if (!is.null(n_perm_max) && (length(n_perm_max) != 1L || !is.finite(n_perm_max) ||
+    n_perm_max < 1 || n_perm_max != round(n_perm_max))) {
+    stop("`n_perm_max` must be NULL or a single integer >= 1.", call. = FALSE)
+  }
+  if (length(alpha) != 1L || !is.finite(alpha) || alpha <= 0 || alpha >= 1) {
+    stop("`alpha` must be a single number in (0, 1).", call. = FALSE)
+  }
+
   v <- validate_inputs(ranked_genes, rank_stat, weight, p_adjust_method)
   sets <- coerce_gene_sets(gene_sets)
   dir <- infer_direction(v$rank_stat, supplied = direction)
@@ -148,7 +171,8 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
     max_cutoff_frac <= 0 || max_cutoff_frac > 1) {
     stop("`max_cutoff_frac` must be a single number in (0, 1].", call. = FALSE)
   }
-  if (length(min_hits) != 1L || !is.finite(min_hits) || min_hits < 1) {
+  if (length(min_hits) != 1L || !is.finite(min_hits) || min_hits < 1 ||
+    min_hits != round(min_hits)) {
     stop("`min_hits` must be a single integer >= 1.", call. = FALSE)
   }
   L <- as.integer(ceiling(max_cutoff_frac * v$N))

@@ -15,6 +15,29 @@ test_that("Besag-Clifford estimator: h/L when resolved, (c+1)/(B_max+1) when cap
   expect_equal(r2$p_hat, (3 + 1) / (100 + 1))
 })
 
+test_that("the engine inlines the same Besag-Clifford finalize as .bc_finalize", {
+  # finalize_group() computes resolved p = target_hits / L_hit and capped
+  # p = (c + 1)/(b_max + 1) inline rather than calling .bc_finalize. Lock that the
+  # two agree on the same stream so the estimator cannot silently fork in two.
+  obs <- 0
+  set.seed(7)
+  stream <- rnorm(500) # exceedance = stream <= obs; ~50% here, so h is reached
+  h <- 10L
+  b_max <- 1000L
+  ref <- .bc_finalize(stream, obs, h, b_max)
+  L_hit <- which(cumsum(stream <= obs) >= h)[1L]
+  inline_p <- if (!is.na(L_hit)) h / L_hit else (sum(stream <= obs) + 1) / (b_max + 1)
+  expect_false(ref$resolution_limited)
+  expect_equal(inline_p, ref$p_hat) # resolved: h / L
+
+  # Capped: no draw <= obs, so h is never reached -> (c + 1)/(b_max + 1).
+  capped <- rep(1, 50)
+  ref2 <- .bc_finalize(capped, obs, h = 5L, b_max = length(capped))
+  inline_p2 <- (sum(capped <= obs) + 1) / (length(capped) + 1)
+  expect_true(ref2$resolution_limited)
+  expect_equal(inline_p2, ref2$p_hat)
+})
+
 test_that("adaptive removes the 1/(B0+1) floor for a strong pathway", {
   ranked <- paste0("g", 1:400)
   fillers <- setNames(

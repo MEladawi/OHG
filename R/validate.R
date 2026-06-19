@@ -113,8 +113,9 @@ validate_inputs <- function(ranked_genes, rank_stat, weight, p_adjust_method = "
 #' Intersect, de-duplicate, and size-filter gene sets against the universe
 #'
 #' Computes `T_eff = unique(T) intersect U` and `m = |T_eff|` for each set, then
-#' drops sets with `m < min_set_size` or `m > N`. `min_set_size` controls
-#' significance inclusion only; it never gates the NLES column.
+#' drops sets with `m < min_set_size` (`m` cannot exceed `N`: `T_eff` is an
+#' intersection with the universe). `min_set_size` controls significance inclusion
+#' only; it never gates the NLES column.
 #'
 #' @param gene_sets Named list of character vectors (post-coercion).
 #' @param universe The ranked gene vector.
