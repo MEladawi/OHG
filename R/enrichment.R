@@ -189,6 +189,16 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
   } else {
     as.integer(n_perm_max)
   }
+  # The cap must not sit below the baseline B0: the adaptive ramp draws B0 on its
+  # first round, so b_max < B0 would draw past the cap and then finalize capped
+  # pathways as (c + 1)/(b_max + 1) with c counted over the larger B0 -- yielding
+  # p-values above 1. A cap below its own baseline is contradictory; fail loudly.
+  if (adaptive && b_max < n_perm0) {
+    stop(sprintf(
+      "`n_perm_max` (%d) must be >= the adaptive baseline B0 = max(n_perm, min_perm_nles) = %d.",
+      b_max, n_perm0
+    ), call. = FALSE)
+  }
 
   # Always restore the caller's global RNG state, even when seed = NULL: the
   # adaptive path draws a base seed and the per-size workers call set.seed(),

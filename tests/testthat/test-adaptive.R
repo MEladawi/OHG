@@ -143,6 +143,35 @@ test_that("adaptive is reproducible across worker counts", {
   expect_equal(r1$n_perm_used[order(r1$pathway)], r2$n_perm_used[order(r2$pathway)])
 })
 
+test_that("adaptive rejects a cap below the baseline B0 (no p-value > 1)", {
+  ranked <- paste0("g", 1:200)
+  sets <- list(A = ranked[1:12], B = ranked[c(2:9, 100, 150)])
+  # n_perm_max below B0 = max(n_perm, min_perm_nles) would otherwise draw past the
+  # cap and finalize (c + 1)/(b_max + 1) with c counted over more than b_max draws,
+  # producing p-values above 1. The contradiction must fail loudly instead.
+  expect_error(
+    ohg_enrichment(ranked, sets,
+      method = "adaptive", n_perm = 2000L, n_perm_max = 200L, seed = 1
+    ),
+    "n_perm_max"
+  )
+  # min_perm_nles alone can push B0 above the cap even when n_perm <= cap.
+  expect_error(
+    ohg_enrichment(ranked, sets,
+      method = "adaptive", n_perm = 200L, min_perm_nles = 1000L,
+      n_perm_max = 500L, seed = 1
+    ),
+    "n_perm_max"
+  )
+  # A cap equal to B0 is the boundary case and must be allowed, p-values in [0, 1].
+  res <- suppressWarnings(ohg_enrichment(ranked, sets,
+    method = "adaptive", n_perm = 500L, min_perm_nles = 500L,
+    n_perm_max = 500L, seed = 1
+  ))
+  expect_true(all(res$p_value >= 0 & res$p_value <= 1))
+  expect_true(all(res$n_perm_used <= 500L))
+})
+
 test_that("method 'permutation' reproduces the fixed-B p-value exactly", {
   ranked <- paste0("g", 1:250)
   sets <- list(A = ranked[1:12], B = ranked[c(2:9, 100, 150)])

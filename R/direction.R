@@ -36,8 +36,11 @@ tie_boundaries <- function(rank_stat, n = length(rank_stat)) {
 #' Infer the default test direction from `rank_stat`
 #'
 #' A signed `rank_stat` (one that crosses zero) defaults to `"both"` -- both ends
-#' are meaningful. A non-negative or absent `rank_stat` defaults to `"up"` -- only
-#' the top is meaningful. A user-supplied `direction` always wins.
+#' are meaningful. An all-negative `rank_stat` defaults to `"down"` -- every gene
+#' is on one side of zero and the strongest sit at the bottom of the descending
+#' sort, so the meaningful tail is the bottom. A non-negative or absent
+#' `rank_stat` defaults to `"up"` -- only the top is meaningful. A user-supplied
+#' `direction` always wins.
 #'
 #' @param rank_stat Numeric ordering statistic, or `NULL`.
 #' @param supplied A user-supplied direction (`"up"`/`"down"`/`"both"`) or `NULL`.
@@ -56,5 +59,7 @@ infer_direction <- function(rank_stat, supplied = NULL) {
   if (is.null(rank_stat)) {
     return("up")
   }
-  if (any(rank_stat < 0) && any(rank_stat > 0)) "both" else "up"
+  has_neg <- any(rank_stat < 0)
+  has_pos <- any(rank_stat > 0)
+  if (has_neg && has_pos) "both" else if (has_neg) "down" else "up"
 }

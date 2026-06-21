@@ -194,7 +194,7 @@ The normalization follows the same idea as GSEA's NES — standardize the observ
 
 ## Up, down, or both
 
-OHG scans the top of whatever list you hand it, so `direction` points it at the end you care about: `"up"` uses the list as-is (most up-regulated genes), `"down"` reverses it (most down-regulated), and `"both"` does each end separately and corrects them together. Direction comes from the tested end and the sign of `rank_stat` — never from the sign of the effect weight, because the weight measures magnitude only, and letting it also encode direction would make `NLES` undefined for pathways whose leading edge mixes up- and down-regulated genes. The result is signed for you as `NLES_signed`. Leave `direction` unset and OHG infers it: a signed metric scans both ends, an all-positive one scans the top.
+OHG scans the top of whatever list you hand it, so `direction` points it at the end you care about: `"up"` uses the list as-is (most up-regulated genes), `"down"` reverses it (most down-regulated), and `"both"` does each end separately and corrects them together. Direction comes from the tested end and the sign of `rank_stat` — never from the sign of the effect weight, because the weight measures magnitude only, and letting it also encode direction would make `NLES` undefined for pathways whose leading edge mixes up- and down-regulated genes. The result is signed for you as `NLES_signed`. Leave `direction` unset and OHG infers it from the sign of `rank_stat`: a metric that crosses zero scans both ends, an all-positive one scans the top, and an all-negative one scans the bottom.
 
 ## The two inputs you supply: `rank_stat` and `weight`
 

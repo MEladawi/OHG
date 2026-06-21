@@ -16,8 +16,11 @@ One of \code{"up"}, \code{"down"}, \code{"both"}.
 }
 \description{
 A signed \code{rank_stat} (one that crosses zero) defaults to \code{"both"} -- both ends
-are meaningful. A non-negative or absent \code{rank_stat} defaults to \code{"up"} -- only
-the top is meaningful. A user-supplied \code{direction} always wins.
+are meaningful. An all-negative \code{rank_stat} defaults to \code{"down"} -- every gene
+is on one side of zero and the strongest sit at the bottom of the descending
+sort, so the meaningful tail is the bottom. A non-negative or absent
+\code{rank_stat} defaults to \code{"up"} -- only the top is meaningful. A user-supplied
+\code{direction} always wins.
 }
 \examples{
 infer_direction(c(3, 1, -1, -4))

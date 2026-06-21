@@ -4,6 +4,25 @@ test_that("infer_direction: signed => both, non-negative/NULL => up", {
   expect_identical(infer_direction(NULL), "up")
 })
 
+test_that("infer_direction: all-negative => down (signal sits at the bottom)", {
+  # A signed statistic that never crosses zero (every gene down-regulated) puts
+  # its strongest genes at the bottom of the descending sort, so the meaningful
+  # tail is the bottom -- defaulting to "up" would test the weakest genes.
+  expect_identical(infer_direction(c(-1, -2, -4)), "down")
+  expect_identical(infer_direction(c(0, -1, -3)), "down") # zeros don't count as positive
+  expect_identical(infer_direction(c(0, 0, 0)), "up") # no negatives => still "up"
+})
+
+test_that("inferred all-negative direction finds bottom enrichment by default", {
+  ranked <- paste0("g", 1:200)
+  rs <- seq(-1, -200) # strictly decreasing, all negative => default "down"
+  sets <- list(TOP = ranked[1:12], BOTTOM = ranked[189:200])
+  res <- ohg_enrichment_quiet(ranked, sets, rank_stat = rs, n_perm = 500L, seed = 1)
+  # default inference must pick the down tail, where BOTTOM is strongly enriched
+  expect_false("up" %in% res$direction)
+  expect_lt(res$p_value[res$pathway == "BOTTOM"][1], 0.05)
+})
+
 test_that("explicit direction always overrides inference", {
   expect_identical(infer_direction(c(3, -1), supplied = "up"), "up")
   expect_identical(infer_direction(c(5, 4), supplied = "both"), "both")
