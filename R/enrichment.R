@@ -1,3 +1,21 @@
+# Assemble one result-tibble row from a scored (pathway, direction). Both scoring
+# engines (fixed-B and adaptive) emit the same column schema; only the p-value and
+# permutation-accounting columns differ, so they are passed in. Keeping the schema
+# in one place stops the two paths drifting apart. Internal helper.
+.result_row <- function(pathway, direction, set_m, st, rg, eff,
+                        p_value, n_perm_used, n_exceed, resolution_limited) {
+  tibble::tibble(
+    pathway = pathway, direction = direction, set_size = set_m,
+    cutoff_rank = st$cutoff,
+    overlap = st$overlap, leading_edge_fraction = st$overlap / set_m,
+    neg_log10_mHG = -st$log_stat / log(10), mHG_stat = exp(st$log_stat),
+    p_value = p_value, n_perm_used = n_perm_used,
+    n_exceed = n_exceed, resolution_limited = resolution_limited,
+    E_obs = eff$E_obs, NLES = eff$NLES, NLES_signed = eff$NLES_signed,
+    hits = paste(rg[st$le_idx], collapse = " ")
+  )
+}
+
 #' Ordered hypergeometric (mHG) enrichment
 #'
 #' Runs the ordered / minimum-hypergeometric enrichment test for one ranked gene
@@ -296,7 +314,7 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
         }
       }
       if (is.null(nb)) {
-        if (!is.null(seed)) set.seed(seed + m) # stream keyed to m, not order
+        if (!is.null(seed)) set.seed(.keyed_seed(seed, m)) # stream keyed to m, not order
         nb <- ohg_permutation_null(v$N, m, n_perm, ctx$boundaries, L = L, X = X)
         fixed_cache <- c(
           fixed_cache, list(list(boundaries = ctx$boundaries, nb = nb))
@@ -315,15 +333,10 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
         st <- stats[[j]]
         set <- sets_m[[j]]
         eff <- .nles_from_summary(st$le_idx, ctx$w, ctx$dir_sign, summ)
-        tibble::tibble(
-          pathway = names(sets_m)[j], direction = ctx$label, set_size = set$m,
-          cutoff_rank = st$cutoff,
-          overlap = st$overlap, leading_edge_fraction = st$overlap / set$m,
-          neg_log10_mHG = -st$log_stat / log(10), mHG_stat = exp(st$log_stat),
+        .result_row(
+          names(sets_m)[j], ctx$label, set$m, st, ctx$rg, eff,
           p_value = (1 + c_exc[i]) / (1 + n_perm), n_perm_used = n_perm,
-          n_exceed = c_exc[i], resolution_limited = FALSE,
-          E_obs = eff$E_obs, NLES = eff$NLES, NLES_signed = eff$NLES_signed,
-          hits = paste(ctx$rg[st$le_idx], collapse = " ")
+          n_exceed = c_exc[i], resolution_limited = FALSE
         )
       }))
     }
@@ -457,15 +470,10 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
         st <- g$stats[[j]]
         set <- g$sets_m[[j]]
         eff <- .nles_from_summary(st$le_idx, g$ctx$w, g$ctx$dir_sign, summ)
-        tibble::tibble(
-          pathway = names(g$sets_m)[j], direction = g$ctx$label, set_size = set$m,
-          cutoff_rank = st$cutoff,
-          overlap = st$overlap, leading_edge_fraction = st$overlap / set$m,
-          neg_log10_mHG = -st$log_stat / log(10), mHG_stat = exp(st$log_stat),
+        .result_row(
+          names(g$sets_m)[j], g$ctx$label, set$m, st, g$ctx$rg, eff,
           p_value = p_val[i], n_perm_used = g$b_used,
-          n_exceed = g$c[i], resolution_limited = capped[i],
-          E_obs = eff$E_obs, NLES = eff$NLES, NLES_signed = eff$NLES_signed,
-          hits = paste(g$ctx$rg[st$le_idx], collapse = " ")
+          n_exceed = g$c[i], resolution_limited = capped[i]
         )
       })
     }
@@ -501,7 +509,26 @@ ohg_enrichment <- function(ranked_genes, gene_sets, rank_stat = NULL, weight = N
       dplyr::slice_min(p_value, n = 1L, by = pathway, with_ties = FALSE)
   }
 
-  out$p_adjust <- stats::p.adjust(out$p_value, method = p_adjust_method)
+  # Multiple-testing family size = every hypothesis that was TESTED, not just the
+  # rows that survived the overlap >= 1 drop. A kept pathway whose hits all fall
+  # below the cutoff cap was still tested; its permutation p-value is exactly 1 (a
+  # null result), and it is dropped from the output only for tidiness. Adjusting
+  # over the surviving subset alone would shrink the BH/BY denominator and make
+  # every survivor's adjusted p-value anti-conservative (a pathway count of
+  # n_kept reported as n_emitted inflates significance by n_kept / n_emitted).
+  # Pass the full family size via `n` instead -- for BH this is identical to
+  # carrying the omitted p = 1 hypotheses through adjustment, since their terms
+  # (>= 1) never bind the cumulative minimum. Pathways removed by min_set_size are
+  # NOT in the family: that screen depends only on set size (independent of the
+  # ranking), so it is a legitimate pre-test filter. With collapse_both each
+  # pathway's two tails become one reported hypothesis, so the family is the
+  # pathway count there, not the per-tail count.
+  n_family <- if (isTRUE(collapse_both) && dir == "both") {
+    length(pruned$kept)
+  } else {
+    n_tests
+  }
+  out$p_adjust <- stats::p.adjust(out$p_value, method = p_adjust_method, n = n_family)
   out$p_adjust_method <- p_adjust_method
 
   # Honesty flag: a pathway capped at b_max without resolving reports a conservative

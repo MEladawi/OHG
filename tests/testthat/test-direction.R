@@ -46,7 +46,13 @@ test_that("down == up on the reversed list; both pools one adjustment", {
     n_perm = 500L, seed = 1
   )
   expect_true(all(c("up", "down") %in% both$direction))
-  expect_equal(both$p_adjust, stats::p.adjust(both$p_value, "BH"))
+  # One pooled BH adjustment over BOTH tails, with the family counting every
+  # tested hypothesis (each kept pathway x each direction). TOP enriches up but
+  # not down, and BOTTOM the reverse, so the TOP-down and BOTTOM-up tails are
+  # tested null results (p = 1) dropped from the output -- they still belong in
+  # the family, hence n = 2 * kept, not the emitted-row count.
+  kept <- length(prune_gene_sets(coerce_gene_sets(sets), ranked, 3L, length(ranked))$kept)
+  expect_equal(both$p_adjust, stats::p.adjust(both$p_value, "BH", n = 2L * kept))
 })
 
 test_that("both-direction rows match separate up/down runs (shared-null safety)", {

@@ -48,6 +48,15 @@ ohg_permutation_null <- function(N, m, B, boundaries = seq_len(N), L = N, X = 1L
   )
 }
 
+# Per-size RNG seed keyed to m, overflow-safe. `seed + m` on two integers can
+# exceed .Machine$integer.max and silently overflow to NA, which then makes
+# set.seed(NA) abort ("supplied seed is not a valid integer") for large seeds.
+# Add in double precision and wrap into the valid integer range first; the wrap
+# is deterministic, so the per-m streams stay reproducible. Internal helper.
+.keyed_seed <- function(seed, m) {
+  as.integer((as.double(seed) + as.double(m)) %% .Machine$integer.max)
+}
+
 #' Build one permutation null per distinct set size, reproducibly
 #'
 #' Constructs `ohg_permutation_null()` once per distinct `m` (descending, for load
@@ -72,7 +81,7 @@ build_nulls <- function(ms, N, B, boundaries, n_cores = 1L, seed = NULL,
                         L = N, X = 1L) {
   ms <- sort(unique(ms), decreasing = TRUE)
   one <- function(mm) {
-    if (!is.null(seed)) set.seed(seed + mm) # stream keyed to m, not order
+    if (!is.null(seed)) set.seed(.keyed_seed(seed, mm)) # stream keyed to m, not order
     ohg_permutation_null(N, mm, B, boundaries, L = L, X = X)
   }
   use_par <- n_cores > 1L &&
@@ -122,7 +131,7 @@ build_nulls <- function(ms, N, B, boundaries, n_cores = 1L, seed = NULL,
                                      target_hits, L = N, X = 1L,
                                      weight = NULL, robust = TRUE) {
   if (is.null(rng_state)) {
-    set.seed(seed + m) # first draw: open the stream keyed to m
+    set.seed(.keyed_seed(seed, m)) # first draw: open the stream keyed to m
   } else {
     assign(".Random.seed", rng_state, envir = .GlobalEnv) # resume where we stopped
   }

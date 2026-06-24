@@ -3,7 +3,10 @@
 # observable output they fail, flagging it for review. (Originally created to prove
 # the finalize-redraw elimination changed nothing; regenerated after the accept-gate
 # removal, which legitimately changed one fixture pathway -- a single-pathway group
-# the gate used to accept-stop early now resolves normally.)
+# the gate used to accept-stop early now resolves normally. Regenerated again after
+# the multiple-testing fix: p_adjust now divides by the full tested family (4 sets x
+# 2 directions = 8, not the 6 emitted rows), so the two tails with no eligible
+# leading edge are counted; only p_adjust moved.)
 
 test_that("heterogeneous-group adaptive result is byte-identical to golden", {
   golden <- readRDS(test_path("fixtures", "redraw_golden_hetero.rds"))
